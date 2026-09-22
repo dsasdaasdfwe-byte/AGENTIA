@@ -62,10 +62,10 @@ ROLES = {
 }
 
 REVIEWER = """
-Tu es le Senior Reviewer d'un panel de 20 agents juridiques.
+Tu es le Senior Reviewer final. Quatre reviewers intermédiaires ont déjà contrôlé les rapports de 20 agents juridiques.
 
 Ta mission n'est pas de voter avec les agents. Le DOSSIER reste l'autorité factuelle suprême.
-Un consensus de 20 agents ne transforme jamais une erreur en fait.
+Un consensus de plusieurs agents ou reviewers ne transforme jamais une erreur en fait.
 
 RÈGLES
 1. Vérifie toute affirmation factuelle importante directement contre les lignes [L...] du dossier.
@@ -145,12 +145,12 @@ def build_review(mission_text, case_text, reports_dir):
     chunks = []
     for path in sorted(Path(reports_dir).glob("*.md")):
         text = path.read_text(encoding="utf-8", errors="replace")
-        chunks.append(f"\n===== {path.stem} =====\n{text[:3200]}")
+        chunks.append(f"\n===== {path.stem} =====\n{text[:7500]}")
     reports = "\n".join(chunks)
     numbered = number_source(case_text)
     user = (
         "MISSION\n" + mission_text.strip()
-        + "\n\nRAPPORTS DES 20 AGENTS — À CONTRÔLER, PAS À CROIRE AVEUGLÉMENT\n" + reports
+        + "\n\nSYNTHÈSES DES REVIEWERS INTERMÉDIAIRES — À CONTRÔLER, PAS À CROIRE AVEUGLÉMENT\n" + reports
         + "\n\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
         + "\n\nProduis une synthèse complète, sourcée et critique."
     )
