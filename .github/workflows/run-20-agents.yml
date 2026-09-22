@@ -89,8 +89,6 @@ jobs:
       OLLAMA_KEEP_ALIVE: "10m"
       CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
       MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-      AGENTIA_OLLAMA_CLOUD: "1"
     steps:
       - uses: actions/checkout@v7
       - name: Prepare runtime-only input
