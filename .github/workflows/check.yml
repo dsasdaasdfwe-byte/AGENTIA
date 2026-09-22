@@ -24,16 +24,17 @@ jobs:
           python3 -m py_compile agents/run_agent.py
           python3 -m py_compile agents/panel_review.py
           python3 -m py_compile agents/review.py
-      - name: Validate topology
+      - name: Validate local-only topology
         run: |
           grep -F 'max-parallel: 20' .github/workflows/run-20-agents.yml
           grep -F 'max-parallel: 4' .github/workflows/run-20-agents.yml
           grep -F 'Panel Reviewer' .github/workflows/run-20-agents.yml
           grep -F 'build_agent_audit' agents/run_agent.py
           grep -F 'num_ctx=32768' agents/run_agent.py
-          grep -F 'unique_source_lines_cited' agents/run_agent.py
-          grep -F 'qwen3.5:cloud' .github/workflows/run-20-agents.yml
-          grep -F 'OLLAMA_API_KEY' .github/workflows/run-20-agents.yml
-          grep -F 'num_ctx=65536' agents/panel_review.py
-          grep -F 'num_predict=6500' agents/review.py
-          grep -F 'CLOUD_URL = "https://ollama.com/api/chat"' agents/ollama_client.py
+          grep -F 'num_ctx=32768' agents/panel_review.py
+          grep -F 'num_predict=4000' agents/review.py
+          grep -F 'http://127.0.0.1:11434/api/chat' agents/ollama_client.py
+          if grep -R -E 'OLLAMA_API_KEY|qwen3\.5:cloud|ollama\.com/api' agents .github/workflows; then
+            echo "External/cloud Ollama configuration is forbidden"
+            exit 1
+          fi
