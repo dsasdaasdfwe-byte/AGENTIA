@@ -33,8 +33,8 @@ def main():
 
     reports_dir = Path(args.reports_dir)
     reports = sorted(reports_dir.glob("*.md"))
-    if len(reports) != 20:
-        raise SystemExit(f"expected 20 reports, found {len(reports)}")
+    if len(reports) != 4:
+        raise SystemExit(f"expected 4 panel reports, found {len(reports)}")
 
     case_text = Path(args.case).read_text(encoding="utf-8")
     mission_text = Path(args.mission).read_text(encoding="utf-8")
@@ -51,9 +51,9 @@ def main():
         args.model,
         system_prompt,
         user_prompt,
-        num_predict=2400,
-        num_ctx=24576,
-        temperature=0.07,
+        num_predict=3500,
+        num_ctx=32768,
+        temperature=0.02,
         seed=4242,
         timeout=1800,
         keep_alive="10m",
@@ -66,9 +66,9 @@ def main():
         args.model,
         audit_system,
         audit_user,
-        num_predict=2600,
-        num_ctx=24576,
-        temperature=0.03,
+        num_predict=4000,
+        num_ctx=32768,
+        temperature=0.02,
         seed=4343,
         timeout=1800,
         keep_alive="10m",
@@ -89,7 +89,7 @@ def main():
 
     metrics = {
         "model": args.model,
-        "reports_count": len(reports),
+        "panel_reports_count": len(reports),
         "source_lines": max_line,
         "unique_source_lines_cited": refs,
         "elapsed_seconds": elapsed,
