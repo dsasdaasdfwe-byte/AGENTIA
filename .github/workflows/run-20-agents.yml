@@ -2,6 +2,9 @@ name: Run 20 AI Agents
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".agentia-trigger"
 
 permissions:
   contents: read
