@@ -46,9 +46,9 @@ def main():
         args.model,
         system_prompt,
         user_prompt,
-        num_predict=1300,
-        num_ctx=24576,
-        temperature=0.14,
+        num_predict=2200,
+        num_ctx=32768,
+        temperature=0.08,
         seed=1000 + sum(ord(c) for c in args.role),
         timeout=1200,
     )
@@ -60,9 +60,9 @@ def main():
         args.model,
         audit_system,
         audit_user,
-        num_predict=1800,
-        num_ctx=24576,
-        temperature=0.05,
+        num_predict=3000,
+        num_ctx=32768,
+        temperature=0.02,
         seed=7000 + sum(ord(c) for c in args.role),
         timeout=1200,
     )
@@ -83,14 +83,17 @@ def main():
             args.model,
             repair_system,
             repair_user,
-            num_predict=1700,
-            num_ctx=24576,
-            temperature=0.03,
+            num_predict=3000,
+            num_ctx=32768,
+            temperature=0.02,
             seed=9000 + sum(ord(c) for c in args.role),
             timeout=1200,
         )
         unique_refs, invalid_refs = citation_quality(answer, max_line)
 
+    final_meta = repair_meta if repair_meta is not None else audit_meta
+    if final_meta.get("done_reason") == "length":
+        raise RuntimeError("final agent report was truncated; refusing partial output")
     if invalid_refs:
         raise RuntimeError(f"invalid source citations: {invalid_refs[:10]}")
     if unique_refs < 5:
