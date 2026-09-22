@@ -10,29 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: agentia-v3-cloud-reviewers
+  group: agentia-v4-local-only
   cancel-in-progress: true
 
 jobs:
-  validate-cloud-reviewer:
-    name: Validate Ollama Cloud
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    env:
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-    steps:
-      - name: Require reviewer cloud key
-        shell: bash
-        run: |
-          if [ -z "$OLLAMA_API_KEY" ]; then
-            echo "Missing repository secret OLLAMA_API_KEY"
-            exit 1
-          fi
-          echo "Ollama Cloud reviewer key is configured"
-
   warm-model-cache:
     name: Prepare Qwen 3.5 9B
-    needs: validate-cloud-reviewer
     runs-on: ubuntu-latest
     timeout-minutes: 65
     env:
@@ -136,7 +119,7 @@ jobs:
           if-no-files-found: error
 
   panel-reviewers:
-    name: Cloud Panel Reviewer ${{ matrix.panel }}
+    name: Panel Reviewer ${{ matrix.panel }}
     needs: agents
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -160,8 +143,6 @@ jobs:
       OLLAMA_KEEP_ALIVE: "10m"
       CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
       MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-      AGENTIA_OLLAMA_CLOUD: "1"
     steps:
       - uses: actions/checkout@v7
       - name: Prepare runtime-only input
@@ -197,12 +178,17 @@ jobs:
           count="$(find agent-reports -maxdepth 1 -type f -name '*.md' | wc -l)"
           echo "reports=$count"
           test "$count" -eq 20
-      - name: Run cloud panel reviewer
+      - name: Setup panel reviewer model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:9b
+          use-cache: "true"
+      - name: Run panel reviewer
         run: |
           python3 agents/panel_review.py \
             --panel "${{ matrix.panel }}" \
             --roles "${{ matrix.roles }}" \
-            --model qwen3.5:cloud \
+            --model qwen3.5:9b \
             --case work-input/case.md \
             --mission work-input/mission.md \
             --reports-dir agent-reports \
@@ -218,7 +204,7 @@ jobs:
           if-no-files-found: error
 
   reviewer:
-    name: Cloud Senior Reviewer Final
+    name: Senior Reviewer Final
     needs: panel-reviewers
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -229,8 +215,6 @@ jobs:
       OLLAMA_KEEP_ALIVE: "10m"
       CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
       MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-      AGENTIA_OLLAMA_CLOUD: "1"
     steps:
       - uses: actions/checkout@v7
       - name: Prepare runtime-only input
@@ -274,10 +258,15 @@ jobs:
           echo "panels=$panels agents=$agents"
           test "$panels" -eq 4
           test "$agents" -eq 20
-      - name: Run final cloud reviewer
+      - name: Setup final reviewer model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:9b
+          use-cache: "true"
+      - name: Run final reviewer
         run: |
           python3 agents/review.py \
-            --model qwen3.5:cloud \
+            --model qwen3.5:9b \
             --case work-input/case.md \
             --mission work-input/mission.md \
             --reports-dir panel-reports \
