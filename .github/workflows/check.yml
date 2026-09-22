@@ -22,10 +22,10 @@ jobs:
           python3 -m py_compile agents/ollama_client.py
           python3 -m py_compile agents/prompts.py
           python3 -m py_compile agents/run_agent.py
-          python3 -m py_compile agents/review.py
+          python3 -m py_compile agents/review.py\n          python3 -m py_compile agents/panel_review.py
       - name: Validate topology
         run: |
           grep -F 'max-parallel: 20' .github/workflows/run-20-agents.yml
           test "$(grep -c 'qwen3.5:9b' .github/workflows/run-20-agents.yml)" -ge 3
-          grep -F 'build_agent_audit' agents/run_agent.py
-          grep -F 'unique_source_lines_cited' agents/run_agent.py
+          grep -F 'build_agent_audit' agents/run_agent.py\n          grep -F 'num_ctx=32768' agents/run_agent.py\n          grep -F 'Panel Reviewer' .github/workflows/run-20-agents.yml\n          grep -F 'max-parallel: 4' .github/workflows/run-20-agents.yml
+          grep -F 'unique_source_lines_cited' agents/run_agent.py\n          grep -F 'num_predict=4000' agents/review.py
