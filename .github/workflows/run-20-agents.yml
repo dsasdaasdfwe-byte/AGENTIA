@@ -39,7 +39,7 @@ jobs:
     name: Agent — ${{ matrix.role }}
     needs: warm-model-cache
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 65
     strategy:
       fail-fast: false
       max-parallel: 20
