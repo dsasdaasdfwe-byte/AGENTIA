@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agentia-manual-run
+  group: agentia-v2-32k-hierarchical
   cancel-in-progress: true
 
 jobs:
