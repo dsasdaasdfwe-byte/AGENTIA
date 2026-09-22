@@ -1,0 +1,212 @@
+name: Run 20 AI Agents
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentia-manual-run
+  cancel-in-progress: true
+
+jobs:
+  warm-model-cache:
+    name: Prepare Qwen 3.5 4B
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CASE_TEXT: ${{ secrets.AGENTIA_CASE }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate private runtime input
+        shell: bash
+        run: |
+          if [ -z "$CASE_TEXT" ]; then
+            echo "Missing repository secret AGENTIA_CASE"
+            exit 1
+          fi
+      - name: Prepare cached scout model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:4b
+          use-cache: "true"
+
+  agents:
+    name: Agent — ${{ matrix.role }}
+    needs: warm-model-cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        role:
+          - case-builder
+          - chronology-auditor
+          - fact-evidence-auditor
+          - admissibility-architect
+          - standing-specialist
+          - federal-procedure
+          - cantonal-procedure
+          - constitutional-rights
+          - political-rights
+          - communal-autonomy
+          - statutory-text-auditor
+          - precedent-verifier
+          - doctrine-researcher
+          - counsel-claimant
+          - counsel-opponent
+          - remedies-specialist
+          - logic-auditor
+          - counterfactual-redteam
+          - uncertainty-auditor
+          - synthesis-critic
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "10m"
+      CASE_TEXT: ${{ secrets.AGENTIA_CASE }}
+      MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare runtime-only input
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          case_text = os.environ.get("CASE_TEXT", "").strip()
+          if not case_text:
+              raise SystemExit("AGENTIA_CASE is empty")
+
+          mission = os.environ.get("MISSION_TEXT", "").strip()
+          if not mission:
+              mission = (
+                  "Analyser exhaustivement le dossier sous l'angle du droit suisse. "
+                  "Identifier les questions de recevabilité, procédure, fond, preuve, "
+                  "contre-arguments et recherches juridiques externes nécessaires."
+              )
+
+          root = Path("work-input")
+          root.mkdir(parents=True, exist_ok=True)
+          (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
+          (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
+          PY
+
+      - name: Setup agent model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:4b
+          use-cache: "true"
+
+      - name: Show runner resources
+        run: |
+          echo "role=${{ matrix.role }}"
+          nproc
+          free -h
+          df -h
+
+      - name: Run agent
+        run: |
+          python3 agents/run_agent.py \
+            --role "${{ matrix.role }}" \
+            --model qwen3.5:4b \
+            --case work-input/case.md \
+            --mission work-input/mission.md \
+            --out work-agent
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-${{ matrix.role }}
+          path: |
+            work-agent/${{ matrix.role }}.md
+            work-agent/${{ matrix.role }}-metrics.json
+          retention-days: 3
+          if-no-files-found: error
+
+  reviewer:
+    name: Senior Reviewer
+    needs: agents
+    if: always() && needs.agents.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "5m"
+      CASE_TEXT: ${{ secrets.AGENTIA_CASE }}
+      MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare runtime-only input
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          case_text = os.environ.get("CASE_TEXT", "").strip()
+          if not case_text:
+              raise SystemExit("AGENTIA_CASE is empty")
+
+          mission = os.environ.get("MISSION_TEXT", "").strip()
+          if not mission:
+              mission = (
+                  "Analyser exhaustivement le dossier sous l'angle du droit suisse. "
+                  "Identifier les questions de recevabilité, procédure, fond, preuve, "
+                  "contre-arguments et recherches juridiques externes nécessaires."
+              )
+
+          root = Path("work-input")
+          root.mkdir(parents=True, exist_ok=True)
+          (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
+          (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
+          PY
+
+      - name: Download 20 reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: agent-*
+          path: agent-reports
+          merge-multiple: true
+
+      - name: Validate 20 reports
+        shell: bash
+        run: |
+          count="$(find agent-reports -maxdepth 1 -type f -name '*.md' | wc -l)"
+          echo "reports=$count"
+          test "$count" -eq 20
+
+      - name: Setup reviewer model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:9b
+          use-cache: "false"
+
+      - name: Run Senior Reviewer
+        run: |
+          python3 agents/review.py \
+            --model qwen3.5:9b \
+            --case work-input/case.md \
+            --mission work-input/mission.md \
+            --reports-dir agent-reports \
+            --out work-review
+
+      - name: Upload final report
+        uses: actions/upload-artifact@v7
+        with:
+          name: AGENTIA-final-report
+          path: |
+            work-review/final-report.md
+            work-review/reviewer-metrics.json
+            agent-reports/*.md
+            agent-reports/*-metrics.json
+          retention-days: 3
+          if-no-files-found: error

@@ -1,0 +1,28 @@
+name: Check AGENTIA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compile Python
+        run: |
+          python3 -m py_compile agents/ollama_client.py
+          python3 -m py_compile agents/prompts.py
+          python3 -m py_compile agents/run_agent.py
+          python3 -m py_compile agents/review.py
+      - name: Validate topology
+        run: |
+          grep -F 'max-parallel: 20' .github/workflows/run-20-agents.yml
+          grep -F 'qwen3.5:4b' .github/workflows/run-20-agents.yml
+          grep -F 'qwen3.5:9b' .github/workflows/run-20-agents.yml

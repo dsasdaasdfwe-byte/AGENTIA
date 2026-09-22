@@ -1,0 +1,57 @@
+name: Setup Ollama model
+description: Install Ollama, restore model cache, start the local server, and ensure one model is present.
+
+inputs:
+  model:
+    description: Ollama model tag.
+    required: true
+  use-cache:
+    description: Restore/save ~/.ollama with GitHub Actions cache.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Ollama model
+      if: inputs.use-cache == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ~/.ollama
+        key: ollama-${{ runner.os }}-${{ inputs.model }}-0.34.2-v1
+
+    - name: Setup Ollama
+      uses: ai-action/setup-ollama@60769607c3cbd28c1b2e02d0f5c66880a51944dc
+      with:
+        version: 0.34.2
+
+    - name: Start Ollama
+      shell: bash
+      run: |
+        nohup ollama serve > /tmp/ollama.log 2>&1 &
+        for i in $(seq 1 45); do
+          if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+            exit 0
+          fi
+          sleep 1
+        done
+        cat /tmp/ollama.log || true
+        exit 1
+
+    - name: Ensure model
+      shell: bash
+      env:
+        MODEL: ${{ inputs.model }}
+      run: |
+        if ollama show "$MODEL" >/dev/null 2>&1; then
+          echo "$MODEL already available"
+          exit 0
+        fi
+        for attempt in 1 2 3; do
+          echo "Pulling $MODEL attempt $attempt/3"
+          if ollama pull "$MODEL"; then
+            exit 0
+          fi
+          sleep $((attempt * 10))
+        done
+        exit 1
