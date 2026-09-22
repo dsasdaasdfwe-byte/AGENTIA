@@ -29,7 +29,7 @@ jobs:
             echo "Missing repository secret YOUR_AGENTULTIMATE"
             exit 1
           fi
-      - name: Prepare cached scout model
+      - name: Prepare cached model
         uses: ./.github/actions/setup-ollama
         with:
           model: qwen3.5:9b
@@ -39,7 +39,7 @@ jobs:
     name: Agent — ${{ matrix.role }}
     needs: warm-model-cache
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       max-parallel: 20
@@ -74,46 +74,33 @@ jobs:
       MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
     steps:
       - uses: actions/checkout@v7
-
       - name: Prepare runtime-only input
         shell: bash
         run: |
           python3 - <<'PY'
           import os
           from pathlib import Path
-
           case_text = os.environ.get("CASE_TEXT", "").strip()
           if not case_text:
               raise SystemExit("YOUR_AGENTULTIMATE is empty")
-
           mission = os.environ.get("MISSION_TEXT", "").strip()
           if not mission:
               mission = (
                   "Analyser exhaustivement le dossier sous l'angle du droit suisse. "
-                  "Identifier les questions de recevabilité, procédure, fond, preuve, "
-                  "contre-arguments et recherches juridiques externes nécessaires."
+                  "Identifier recevabilité, procédure, fond, preuve, contre-arguments "
+                  "et recherches juridiques externes nécessaires."
               )
-
           root = Path("work-input")
           root.mkdir(parents=True, exist_ok=True)
           (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
           (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
           PY
-
       - name: Setup agent model
         uses: ./.github/actions/setup-ollama
         with:
           model: qwen3.5:9b
           use-cache: "true"
-
-      - name: Show runner resources
-        run: |
-          echo "role=${{ matrix.role }}"
-          nproc
-          free -h
-          df -h
-
-      - name: Run agent
+      - name: Run audited agent
         run: |
           python3 agents/run_agent.py \
             --role "${{ matrix.role }}" \
@@ -121,7 +108,6 @@ jobs:
             --case work-input/case.md \
             --mission work-input/mission.md \
             --out work-agent
-
       - name: Upload report
         uses: actions/upload-artifact@v7
         with:
@@ -132,76 +118,159 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-  reviewer:
-    name: Senior Reviewer
+  panel-reviewers:
+    name: Panel Reviewer ${{ matrix.panel }}
     needs: agents
-    if: always() && needs.agents.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - panel: "1"
+            roles: "case-builder,chronology-auditor,fact-evidence-auditor,admissibility-architect,standing-specialist"
+          - panel: "2"
+            roles: "federal-procedure,cantonal-procedure,constitutional-rights,political-rights,communal-autonomy"
+          - panel: "3"
+            roles: "statutory-text-auditor,precedent-verifier,doctrine-researcher,counsel-claimant,counsel-opponent"
+          - panel: "4"
+            roles: "remedies-specialist,logic-auditor,counterfactual-redteam,uncertainty-auditor,synthesis-critic"
     env:
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_MAX_LOADED_MODELS: "1"
-      OLLAMA_KEEP_ALIVE: "5m"
+      OLLAMA_KEEP_ALIVE: "10m"
       CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
       MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
     steps:
       - uses: actions/checkout@v7
-
       - name: Prepare runtime-only input
         shell: bash
         run: |
           python3 - <<'PY'
           import os
           from pathlib import Path
-
           case_text = os.environ.get("CASE_TEXT", "").strip()
           if not case_text:
               raise SystemExit("YOUR_AGENTULTIMATE is empty")
-
           mission = os.environ.get("MISSION_TEXT", "").strip()
           if not mission:
               mission = (
                   "Analyser exhaustivement le dossier sous l'angle du droit suisse. "
-                  "Identifier les questions de recevabilité, procédure, fond, preuve, "
-                  "contre-arguments et recherches juridiques externes nécessaires."
+                  "Identifier recevabilité, procédure, fond, preuve, contre-arguments "
+                  "et recherches juridiques externes nécessaires."
               )
-
           root = Path("work-input")
           root.mkdir(parents=True, exist_ok=True)
           (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
           (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
           PY
-
-      - name: Download 20 reports
+      - name: Download 20 agent reports
         uses: actions/download-artifact@v7
         with:
           pattern: agent-*
           path: agent-reports
           merge-multiple: true
-
-      - name: Validate 20 reports
+      - name: Validate 20 agent reports
         shell: bash
         run: |
           count="$(find agent-reports -maxdepth 1 -type f -name '*.md' | wc -l)"
           echo "reports=$count"
           test "$count" -eq 20
-
-      - name: Setup reviewer model
+      - name: Setup panel reviewer model
         uses: ./.github/actions/setup-ollama
         with:
           model: qwen3.5:9b
-          use-cache: "false"
+          use-cache: "true"
+      - name: Run panel reviewer
+        run: |
+          python3 agents/panel_review.py \
+            --panel "${{ matrix.panel }}" \
+            --roles "${{ matrix.roles }}" \
+            --model qwen3.5:9b \
+            --case work-input/case.md \
+            --mission work-input/mission.md \
+            --reports-dir agent-reports \
+            --out work-panel
+      - name: Upload panel synthesis
+        uses: actions/upload-artifact@v7
+        with:
+          name: panel-${{ matrix.panel }}
+          path: |
+            work-panel/panel-${{ matrix.panel }}.md
+            work-panel/panel-${{ matrix.panel }}-metrics.json
+          retention-days: 3
+          if-no-files-found: error
 
-      - name: Run Senior Reviewer
+  reviewer:
+    name: Senior Reviewer Final
+    needs: panel-reviewers
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "10m"
+      CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
+      MISSION_TEXT: ${{ secrets.AGENTIA_MISSION }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare runtime-only input
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          case_text = os.environ.get("CASE_TEXT", "").strip()
+          if not case_text:
+              raise SystemExit("YOUR_AGENTULTIMATE is empty")
+          mission = os.environ.get("MISSION_TEXT", "").strip()
+          if not mission:
+              mission = (
+                  "Analyser exhaustivement le dossier sous l'angle du droit suisse. "
+                  "Identifier recevabilité, procédure, fond, preuve, contre-arguments "
+                  "et recherches juridiques externes nécessaires."
+              )
+          root = Path("work-input")
+          root.mkdir(parents=True, exist_ok=True)
+          (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
+          (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
+          PY
+      - name: Download four panel syntheses
+        uses: actions/download-artifact@v7
+        with:
+          pattern: panel-*
+          path: panel-reports
+          merge-multiple: true
+      - name: Download original agent reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: agent-*
+          path: agent-reports
+          merge-multiple: true
+      - name: Validate hierarchy
+        shell: bash
+        run: |
+          panels="$(find panel-reports -maxdepth 1 -type f -name 'panel-*.md' | wc -l)"
+          agents="$(find agent-reports -maxdepth 1 -type f -name '*.md' | wc -l)"
+          echo "panels=$panels agents=$agents"
+          test "$panels" -eq 4
+          test "$agents" -eq 20
+      - name: Setup final reviewer model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:9b
+          use-cache: "true"
+      - name: Run final reviewer
         run: |
           python3 agents/review.py \
             --model qwen3.5:9b \
             --case work-input/case.md \
             --mission work-input/mission.md \
-            --reports-dir agent-reports \
+            --reports-dir panel-reports \
             --out work-review
-
       - name: Upload final report
         uses: actions/upload-artifact@v7
         with:
@@ -209,6 +278,8 @@ jobs:
           path: |
             work-review/final-report.md
             work-review/reviewer-metrics.json
+            panel-reports/*.md
+            panel-reports/*-metrics.json
             agent-reports/*.md
             agent-reports/*-metrics.json
           retention-days: 3
