@@ -26,7 +26,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--panel", required=True)
     p.add_argument("--roles", required=True)
-    p.add_argument("--model", default="qwen3.5:9b")
+    p.add_argument("--model", default="qwen3.5:cloud")
     p.add_argument("--case", required=True)
     p.add_argument("--mission", required=True)
     p.add_argument("--reports-dir", required=True)
@@ -52,9 +52,9 @@ def main():
         args.model,
         system_prompt,
         user_prompt,
-        num_predict=2400,
-        num_ctx=32768,
-        temperature=0.04,
+        num_predict=3500,
+        num_ctx=65536,
+        temperature=0.03,
         seed=5000 + int(args.panel),
         timeout=1800,
         keep_alive="10m",
@@ -67,9 +67,9 @@ def main():
         args.model,
         audit_system,
         audit_user,
-        num_predict=3200,
-        num_ctx=32768,
-        temperature=0.02,
+        num_predict=5000,
+        num_ctx=65536,
+        temperature=0.01,
         seed=6000 + int(args.panel),
         timeout=1800,
         keep_alive="10m",
