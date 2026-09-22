@@ -3,6 +3,8 @@ name: Check AGENTIA
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - ".agentia-trigger"
   pull_request:
   workflow_dispatch:
 
@@ -24,5 +26,6 @@ jobs:
       - name: Validate topology
         run: |
           grep -F 'max-parallel: 20' .github/workflows/run-20-agents.yml
-          grep -F 'qwen3.5:4b' .github/workflows/run-20-agents.yml
-          grep -F 'qwen3.5:9b' .github/workflows/run-20-agents.yml
+          test "$(grep -c 'qwen3.5:9b' .github/workflows/run-20-agents.yml)" -ge 3
+          grep -F 'build_agent_audit' agents/run_agent.py
+          grep -F 'unique_source_lines_cited' agents/run_agent.py
