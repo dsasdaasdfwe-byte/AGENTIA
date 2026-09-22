@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   warm-model-cache:
-    name: Prepare Qwen 3.5 4B
+    name: Prepare Qwen 3.5 9B
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 65
     env:
       CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
     steps:
@@ -32,7 +32,7 @@ jobs:
       - name: Prepare cached scout model
         uses: ./.github/actions/setup-ollama
         with:
-          model: qwen3.5:4b
+          model: qwen3.5:9b
           use-cache: "true"
 
   agents:
@@ -103,7 +103,7 @@ jobs:
       - name: Setup agent model
         uses: ./.github/actions/setup-ollama
         with:
-          model: qwen3.5:4b
+          model: qwen3.5:9b
           use-cache: "true"
 
       - name: Show runner resources
@@ -117,7 +117,7 @@ jobs:
         run: |
           python3 agents/run_agent.py \
             --role "${{ matrix.role }}" \
-            --model qwen3.5:4b \
+            --model qwen3.5:9b \
             --case work-input/case.md \
             --mission work-input/mission.md \
             --out work-agent
@@ -137,7 +137,7 @@ jobs:
     needs: agents
     if: always() && needs.agents.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
     env:
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: "1"
