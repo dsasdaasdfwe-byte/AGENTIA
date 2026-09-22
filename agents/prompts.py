@@ -34,7 +34,8 @@ D. Contre-arguments et faiblesses
 E. Points à vérifier extérieurement
 F. Conclusion conditionnelle — pas de certitude au-delà du dossier
 
-Maximum environ 900 mots. Réponds en français.
+Maximum environ 1 200 mots. Réponds en français.
+Pour chaque fait important, ajoute après la citation [L...] un très court extrait source entre guillemets si cela aide à lever toute ambiguïté sur la personne, la date ou l'acte.
 """
 
 ROLES = {
@@ -167,5 +168,67 @@ externe présentée à tort comme vérifiée. Produis uniquement la synthèse fi
         "MISSION\n" + mission_text.strip()
         + "\n\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
         + "\n\nPROJET DE SYNTHÈSE À AUDITER\n" + draft
+    )
+    return system, user
+
+
+PANEL_REVIEWER = """
+Tu es un reviewer intermédiaire. Tu reçois 5 rapports d'agents et le DOSSIER original.
+Le DOSSIER est l'autorité suprême. Les rapports ne sont que des hypothèses à contrôler.
+
+MISSION:
+- vérifier les faits, noms, dates, qualités procédurales et sens des décisions;
+- supprimer les affirmations non supportées;
+- relever les contradictions entre les 5 agents;
+- séparer clairement ce qui est établi, inféré, hypothétique ou à rechercher;
+- ne jamais décider par vote ou majorité;
+- produire une synthèse autonome qui pourra être donnée à un reviewer final.
+
+FORMAT:
+1. Faits vérifiés avec [L...]
+2. Points juridiques solides
+3. Contradictions et erreurs détectées
+4. Incertitudes
+5. RESEARCH_NEEDED
+6. Synthèse du panel
+
+Maximum environ 1 300 mots.
+"""
+
+def build_panel_review(panel_id, roles, mission_text, case_text, reports_dir):
+    numbered = number_source(case_text)
+    chunks = []
+    for role in roles:
+        path = Path(reports_dir) / f"{role}.md"
+        if not path.exists():
+            raise FileNotFoundError(path)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        chunks.append(f"\n===== {role} =====\n{text}")
+    reports = "\n".join(chunks)
+    system = COMMON + "\n\n" + PANEL_REVIEWER
+    user = (
+        f"PANEL {panel_id}\n"
+        + "MISSION\n" + mission_text.strip()
+        + "\n\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nRAPPORTS À CONTRÔLER\n" + reports
+        + "\n\nProduis uniquement la synthèse contrôlée du panel."
+    )
+    return system, user
+
+def build_panel_audit(panel_id, mission_text, case_text, draft):
+    numbered = number_source(case_text)
+    system = COMMON + "\n\n" + PANEL_REVIEWER + """
+\nAUDIT FINAL DU PANEL:
+Réécris la synthèse après contrôle proposition par proposition contre le dossier.
+Toute personne, date, qualité procédurale ou décision doit être vérifiée.
+Supprime les généralisations non supportées. Toute règle externe non reproduite devient RESEARCH_NEEDED.
+Ne conserve jamais une affirmation simplement parce que plusieurs agents la répètent.
+"""
+    user = (
+        f"PANEL {panel_id}\n"
+        + "MISSION\n" + mission_text.strip()
+        + "\n\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nBROUILLON DU PANEL À AUDITER\n" + draft
+        + "\n\nProduis uniquement la synthèse finale corrigée du panel."
     )
     return system, user
