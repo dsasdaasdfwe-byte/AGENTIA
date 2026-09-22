@@ -24,7 +24,7 @@ def validate_citations(text, max_line):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--model", default="qwen3.5:cloud")
+    p.add_argument("--model", default="qwen3.5:9b")
     p.add_argument("--case", required=True)
     p.add_argument("--mission", required=True)
     p.add_argument("--reports-dir", required=True)
@@ -51,9 +51,9 @@ def main():
         args.model,
         system_prompt,
         user_prompt,
-        num_predict=5000,
-        num_ctx=65536,
-        temperature=0.01,
+        num_predict=3500,
+        num_ctx=32768,
+        temperature=0.02,
         seed=4242,
         timeout=1800,
         keep_alive="10m",
@@ -66,9 +66,9 @@ def main():
         args.model,
         audit_system,
         audit_user,
-        num_predict=6500,
-        num_ctx=65536,
-        temperature=0.01,
+        num_predict=4000,
+        num_ctx=32768,
+        temperature=0.02,
         seed=4343,
         timeout=1800,
         keep_alive="10m",
