@@ -32,4 +32,8 @@ jobs:
           grep -F 'build_agent_audit' agents/run_agent.py
           grep -F 'num_ctx=32768' agents/run_agent.py
           grep -F 'unique_source_lines_cited' agents/run_agent.py
-          grep -F 'num_predict=4000' agents/review.py
+          grep -F 'qwen3.5:cloud' .github/workflows/run-20-agents.yml
+          grep -F 'OLLAMA_API_KEY' .github/workflows/run-20-agents.yml
+          grep -F 'num_ctx=65536' agents/panel_review.py
+          grep -F 'num_predict=6500' agents/review.py
+          grep -F 'CLOUD_URL = "https://ollama.com/api/chat"' agents/ollama_client.py
