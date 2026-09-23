@@ -258,3 +258,41 @@ RÈGLES ABSOLUES
         + "\n\nRéécris uniquement le rapport final compact."
     )
     return system, user
+
+
+def build_panel_compress(panel_id, case_text, report):
+    numbered = number_source(case_text)
+    system = """
+Tu compresses une synthèse juridique de panel qui a atteint sa limite de sortie.
+Réécris-la en français, maximum 800 mots, sans ajouter d'information.
+Conserve les faits, contradictions, points juridiques, incertitudes et RESEARCH_NEEDED essentiels.
+Chaque fait important doit garder une citation [L....] exacte.
+Ne change jamais les personnes, dates, qualités procédurales ou sens des décisions.
+Le texte final doit être autonome et complet.
+"""
+    user = (
+        f"PANEL {panel_id}\n"
+        + "\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nSYNTHÈSE TROP LONGUE À COMPRESSER\n" + report
+        + "\n\nProduis uniquement la synthèse compacte finale."
+    )
+    return system, user
+
+def build_review_compress(case_text, report):
+    numbered = number_source(case_text)
+    system = """
+Tu compresses le rapport juridique final qui a atteint sa limite de sortie.
+Réécris-le en français, maximum 1 100 mots, sans ajouter d'information.
+Préserve: faits et procédure vérifiés, recevabilité/qualité, fond dans les limites du dossier,
+arguments/contre-arguments, hallucinations détectées, incertitudes et RESEARCH_NEEDED.
+Chaque fait important doit garder une citation [L....] exacte.
+Ne change jamais les personnes, dates, qualités procédurales ou sens des décisions.
+Ne transforme aucune question non examinée en solution de fond.
+Le texte final doit être autonome et complet.
+"""
+    user = (
+        "DOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nRAPPORT FINAL TROP LONG À COMPRESSER\n" + report
+        + "\n\nProduis uniquement le rapport final compact."
+    )
+    return system, user
