@@ -6,7 +6,7 @@ import re
 import time
 
 from ollama_client import chat
-from prompts import build_agent, build_agent_audit, build_agent_repair
+from prompts import build_agent, build_agent_audit, build_agent_repair, build_agent_compress
 
 CITE_RE = re.compile(r"\[L(\d{4})(?:-L(\d{4}))?\]")
 
@@ -92,8 +92,26 @@ def main():
         unique_refs, invalid_refs = citation_quality(answer, max_line)
 
     final_meta = repair_meta if repair_meta is not None else audit_meta
+    compress_meta = None
     if final_meta.get("done_reason") == "length":
-        raise RuntimeError("final agent report was truncated; refusing partial output")
+        compress_system, compress_user = build_agent_compress(
+            args.role, case_text, answer
+        )
+        answer, compress_meta = chat(
+            args.model,
+            compress_system,
+            compress_user,
+            num_predict=2200,
+            num_ctx=32768,
+            temperature=0.01,
+            seed=11000 + sum(ord(c) for c in args.role),
+            timeout=1200,
+        )
+        unique_refs, invalid_refs = citation_quality(answer, max_line)
+        final_meta = compress_meta
+
+    if final_meta.get("done_reason") == "length":
+        raise RuntimeError("compact final agent report was still truncated")
     if invalid_refs:
         raise RuntimeError(f"invalid source citations: {invalid_refs[:10]}")
     if unique_refs < 5:
@@ -114,6 +132,7 @@ def main():
         "draft": draft_meta,
         "audit": audit_meta,
         "repair": repair_meta,
+        "compression": compress_meta,
     }
     metrics_path.write_text(
         json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
