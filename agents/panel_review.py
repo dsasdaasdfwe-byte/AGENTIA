@@ -6,7 +6,7 @@ import re
 import time
 
 from ollama_client import chat
-from prompts import build_panel_review, build_panel_audit
+from prompts import build_panel_review, build_panel_audit, build_panel_compress
 
 CITE_RE = re.compile(r"\[L(\d{4})(?:-L(\d{4}))?\]")
 
@@ -76,8 +76,25 @@ def main():
     )
 
     refs, invalid = validate_citations(answer, max_line)
+    compress_meta = None
     if audit_meta.get("done_reason") == "length":
-        raise RuntimeError("panel output was truncated; refusing partial synthesis")
+        compress_system, compress_user = build_panel_compress(
+            args.panel, case_text, answer
+        )
+        answer, compress_meta = chat(
+            args.model,
+            compress_system,
+            compress_user,
+            num_predict=2400,
+            num_ctx=32768,
+            temperature=0.01,
+            seed=6500 + int(args.panel),
+            timeout=1800,
+            keep_alive="10m",
+        )
+        refs, invalid = validate_citations(answer, max_line)
+        if compress_meta.get("done_reason") == "length":
+            raise RuntimeError("compact panel synthesis was still truncated")
     if invalid:
         raise RuntimeError(f"panel produced invalid citations: {invalid[:10]}")
     if refs < 8:
@@ -100,6 +117,7 @@ def main():
         "status": "ok",
         "draft": draft_meta,
         "audit": audit_meta,
+        "compression": compress_meta,
     }
     metrics_path.write_text(
         json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
