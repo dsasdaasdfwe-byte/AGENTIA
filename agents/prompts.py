@@ -232,3 +232,29 @@ Ne conserve jamais une affirmation simplement parce que plusieurs agents la rép
         + "\n\nProduis uniquement la synthèse finale corrigée du panel."
     )
     return system, user
+
+
+def build_agent_compress(role, case_text, report):
+    numbered = number_source(case_text)
+    system = """
+Tu es le compresseur factuel final d'un rapport juridique.
+Le rapport précédent a dépassé la limite de sortie. Tu dois le réécrire plus court SANS ajouter
+aucune information et SANS perdre les conclusions essentielles.
+
+RÈGLES ABSOLUES
+- Maximum 650 mots.
+- Chaque fait du dossier conserve une référence [L....] exacte.
+- Priorité aux personnes, dates, qualités procédurales, sens des décisions et conclusions.
+- Supprime répétitions, développements généraux et formulations décoratives.
+- Toute règle externe non reproduite reste RESEARCH_NEEDED.
+- Ne transforme jamais une question non examinée en conclusion de fond.
+- Conserve au moins 5 lignes-source distinctes si le dossier le permet.
+- Produis un rapport autonome complet, jamais une phrase coupée.
+"""
+    user = (
+        "RÔLE\n" + role
+        + "\n\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nRAPPORT TROP LONG À COMPRESSER\n" + report
+        + "\n\nRéécris uniquement le rapport final compact."
+    )
+    return system, user
