@@ -7,6 +7,7 @@ import time
 
 from ollama_client import chat
 from prompts import build_review, build_review_audit, build_review_compress, build_review_semantic_check, build_review_semantic_repair
+from semantic_gate import run_atomic_semantic_gate
 
 CITE_RE = re.compile(r"\[L(\d{4})(?:-L(\d{4}))?\]")
 
@@ -167,6 +168,7 @@ def main():
     p.add_argument("--case", required=True)
     p.add_argument("--mission", required=True)
     p.add_argument("--reports-dir", required=True)
+    p.add_argument("--ledger")
     p.add_argument("--out", default="work-review")
     args = p.parse_args()
 
@@ -177,6 +179,7 @@ def main():
 
     case_text = Path(args.case).read_text(encoding="utf-8")
     mission_text = Path(args.mission).read_text(encoding="utf-8")
+    ledger_text = Path(args.ledger).read_text(encoding="utf-8") if args.ledger else ""
     max_line = max(1, len(case_text.splitlines()))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -186,6 +189,8 @@ def main():
     system_prompt, user_prompt = build_review(
         mission_text, case_text, reports_dir
     )
+    if ledger_text:
+        user_prompt += "\n\nLEDGER FACTUEL VÉRIFIÉ + GRAPHE PROCÉDURAL\n" + ledger_text
     draft, draft_meta = chat(
         args.model,
         system_prompt,
@@ -201,6 +206,8 @@ def main():
     audit_system, audit_user = build_review_audit(
         mission_text, case_text, draft
     )
+    if ledger_text:
+        audit_user += "\n\nLEDGER FACTUEL VÉRIFIÉ + GRAPHE PROCÉDURAL\n" + ledger_text
     answer, audit_meta = chat(
         args.model,
         audit_system,
@@ -238,8 +245,8 @@ def main():
             f"reviewer insufficiently grounded: only {refs} unique source lines cited"
         )
 
-    answer, semantic_gate = run_semantic_gate(
-        args.model, mission_text, case_text, answer
+    answer, semantic_gate = run_atomic_semantic_gate(
+        args.model, mission_text, case_text, ledger_text, answer
     )
     refs, invalid = validate_citations(answer, max_line)
     if invalid:
@@ -266,6 +273,10 @@ def main():
     }
     (out / "reviewer-metrics.json").write_text(
         json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (out / "fidelity-metrics.json").write_text(
+        json.dumps(semantic_gate, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(f"reviewer: OK in {elapsed}s; source_lines_cited={refs}", flush=True)
