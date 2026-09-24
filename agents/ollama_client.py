@@ -25,6 +25,7 @@ def chat(
     seed,
     timeout,
     keep_alive="10m",
+    json_mode=False,
 ):
     payload = {
         "model": model,
@@ -43,6 +44,9 @@ def chat(
             "num_thread": 4,
         },
     }
+
+    if json_mode:
+        payload["format"] = "json"
 
     last_error = None
     for attempt in range(1, 3):
