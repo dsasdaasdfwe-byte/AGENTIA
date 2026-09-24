@@ -24,6 +24,9 @@ jobs:
           python3 -m py_compile agents/run_agent.py
           python3 -m py_compile agents/panel_review.py
           python3 -m py_compile agents/review.py
+          python3 -m py_compile agents/grounding_prompts.py
+          python3 -m py_compile agents/fact_ledger.py
+          python3 -m py_compile agents/semantic_gate.py
       - name: Validate local-only topology
         run: |
           grep -F 'max-parallel: 20' .github/workflows/run-20-agents.yml
@@ -33,6 +36,12 @@ jobs:
           grep -F 'num_ctx=32768' agents/run_agent.py
           grep -F 'num_ctx=32768' agents/panel_review.py
           grep -F 'num_predict=4000' agents/review.py
+          grep -F 'Build Verified Fact Ledger' .github/workflows/run-20-agents.yml
+          grep -F -- '--ledger fact-ledger/fact-ledger.json' .github/workflows/run-20-agents.yml
+          grep -F 'TARGET_SUPPORT_RATIO = 0.95' agents/semantic_gate.py
+          grep -F 'verifier_a' agents/semantic_gate.py
+          grep -F 'verifier_b' agents/semantic_gate.py
+          grep -F 'run_atomic_semantic_gate' agents/review.py
           grep -F 'http://127.0.0.1:11434/api/chat' agents/ollama_client.py
           if grep -R -E 'OLLAMA_API_KEY|qwen3\.5:cloud|ollama\.com/api' agents .github/workflows/run-20-agents.yml .github/actions; then
             echo "External/cloud Ollama configuration is forbidden"
