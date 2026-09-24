@@ -28,11 +28,13 @@ def main():
     p.add_argument("--model", default="qwen3.5:9b")
     p.add_argument("--case", required=True)
     p.add_argument("--mission", required=True)
+    p.add_argument("--ledger")
     p.add_argument("--out", default="work-agent")
     args = p.parse_args()
 
     case_text = Path(args.case).read_text(encoding="utf-8")
     mission_text = Path(args.mission).read_text(encoding="utf-8")
+    ledger_text = Path(args.ledger).read_text(encoding="utf-8") if args.ledger else ""
     max_line = max(1, len(case_text.splitlines()))
 
     out = Path(args.out)
@@ -42,6 +44,8 @@ def main():
 
     started = time.monotonic()
     system_prompt, user_prompt = build_agent(args.role, mission_text, case_text)
+    if ledger_text:
+        user_prompt += "\n\nLEDGER FACTUEL VÉRIFIÉ — aide de navigation, le DOSSIER reste supérieur\n" + ledger_text
     draft, draft_meta = chat(
         args.model,
         system_prompt,
@@ -56,6 +60,8 @@ def main():
     audit_system, audit_user = build_agent_audit(
         args.role, mission_text, case_text, draft
     )
+    if ledger_text:
+        audit_user += "\n\nLEDGER FACTUEL VÉRIFIÉ — contrôle des acteurs/dates/actes\n" + ledger_text
     answer, audit_meta = chat(
         args.model,
         audit_system,
