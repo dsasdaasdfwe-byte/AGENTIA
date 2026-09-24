@@ -146,3 +146,24 @@ Maximum environ 1500 mots. Retourne uniquement le rapport corrigé.
         + "\n\nRAPPORT À RÉPARER\n" + report
     )
     return system, user
+
+
+def claim_coverage_check(report, claims_json):
+    system = """
+Tu contrôles la COUVERTURE d'une décomposition en claims atomiques.
+Compare le rapport original et la liste de claims.
+
+Signale toute proposition factuelle, procédurale ou juridique vérifiable présente dans le rapport
+qui n'est représentée par aucun claim. Ignore les titres, transitions, conseils purement rédactionnels
+et répétitions exactes.
+
+Ne juge pas si les propositions sont vraies; vérifie seulement qu'elles n'ont pas été omises.
+Retourne UNIQUEMENT:
+{"missing":[{"text":"proposition omise, reprise fidèlement du rapport","reason":"motif bref"}]}
+Si rien ne manque: {"missing":[]}
+"""
+    user = (
+        "RAPPORT ORIGINAL\n" + report
+        + "\n\nCLAIMS EXTRAITS\n" + claims_json
+    )
+    return system, user
