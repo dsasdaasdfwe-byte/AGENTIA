@@ -132,13 +132,16 @@ def main():
     system, user = fact_ledger_extract(case_text)
     draft_raw, draft_meta = chat(
         args.model, system, user,
-        num_predict=3800,
+        num_predict=3200,
         num_ctx=32768,
         temperature=0.01,
         seed=21001,
         timeout=1800,
         keep_alive="10m",
+        json_mode=True,
     )
+    if draft_meta.get("done_reason") == "length":
+        raise RuntimeError("fact ledger draft was truncated")
     draft = parse_json(draft_raw)
 
     audit_system, audit_user = fact_ledger_audit(
@@ -146,13 +149,16 @@ def main():
     )
     final_raw, audit_meta = chat(
         args.model, audit_system, audit_user,
-        num_predict=4200,
+        num_predict=3400,
         num_ctx=32768,
         temperature=0.0,
         seed=21002,
         timeout=1800,
         keep_alive="10m",
+        json_mode=True,
     )
+    if audit_meta.get("done_reason") == "length":
+        raise RuntimeError("fact ledger audit was truncated")
     data = parse_json(final_raw)
     validate_ledger(data, source_lines)
 
