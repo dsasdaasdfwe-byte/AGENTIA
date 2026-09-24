@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agentia-v4-local-only
+  group: agentia-v8-grounded-local
   cancel-in-progress: true
 
 jobs:
@@ -35,9 +35,58 @@ jobs:
           model: qwen3.5:9b
           use-cache: "true"
 
+
+  fact-ledger:
+    name: Build Verified Fact Ledger
+    needs: warm-model-cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "10m"
+      CASE_TEXT: ${{ secrets.YOUR_AGENTULTIMATE }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare runtime-only source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          case_text = os.environ.get("CASE_TEXT", "").strip()
+          if not case_text:
+              raise SystemExit("YOUR_AGENTULTIMATE is empty")
+          root = Path("work-input")
+          root.mkdir(parents=True, exist_ok=True)
+          (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
+          PY
+      - name: Setup ledger model
+        uses: ./.github/actions/setup-ollama
+        with:
+          model: qwen3.5:9b
+          use-cache: "true"
+      - name: Build and audit fact ledger
+        run: |
+          python3 agents/fact_ledger.py \
+            --model qwen3.5:9b \
+            --case work-input/case.md \
+            --out work-ledger
+      - name: Upload verified fact ledger
+        uses: actions/upload-artifact@v7
+        with:
+          name: fact-ledger
+          path: |
+            work-ledger/fact-ledger.json
+            work-ledger/fact-ledger.md
+            work-ledger/fact-ledger-metrics.json
+          retention-days: 3
+          if-no-files-found: error
+
   agents:
     name: Agent — ${{ matrix.role }}
-    needs: warm-model-cache
+    needs: fact-ledger
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
@@ -95,6 +144,11 @@ jobs:
           (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
           (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
           PY
+      - name: Download verified fact ledger
+        uses: actions/download-artifact@v7
+        with:
+          name: fact-ledger
+          path: fact-ledger
       - name: Setup agent model
         uses: ./.github/actions/setup-ollama
         with:
@@ -107,6 +161,7 @@ jobs:
             --model qwen3.5:9b \
             --case work-input/case.md \
             --mission work-input/mission.md \
+            --ledger fact-ledger/fact-ledger.md \
             --out work-agent
       - name: Upload report
         uses: actions/upload-artifact@v7
@@ -166,6 +221,11 @@ jobs:
           (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
           (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
           PY
+      - name: Download verified fact ledger
+        uses: actions/download-artifact@v7
+        with:
+          name: fact-ledger
+          path: fact-ledger
       - name: Download 20 agent reports
         uses: actions/download-artifact@v7
         with:
@@ -192,6 +252,7 @@ jobs:
             --case work-input/case.md \
             --mission work-input/mission.md \
             --reports-dir agent-reports \
+            --ledger fact-ledger/fact-ledger.md \
             --out work-panel
       - name: Upload panel synthesis
         uses: actions/upload-artifact@v7
@@ -207,7 +268,7 @@ jobs:
     name: Senior Reviewer Final
     needs: panel-reviewers
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: "1"
@@ -238,6 +299,11 @@ jobs:
           (root / "case.md").write_text(case_text + "\n", encoding="utf-8")
           (root / "mission.md").write_text(mission + "\n", encoding="utf-8")
           PY
+      - name: Download verified fact ledger
+        uses: actions/download-artifact@v7
+        with:
+          name: fact-ledger
+          path: fact-ledger
       - name: Download four panel syntheses
         uses: actions/download-artifact@v7
         with:
@@ -270,6 +336,7 @@ jobs:
             --case work-input/case.md \
             --mission work-input/mission.md \
             --reports-dir panel-reports \
+            --ledger fact-ledger/fact-ledger.json \
             --out work-review
       - name: Upload final report
         uses: actions/upload-artifact@v7
@@ -278,6 +345,8 @@ jobs:
           path: |
             work-review/final-report.md
             work-review/reviewer-metrics.json
+            work-review/fidelity-metrics.json
+            fact-ledger/*
             panel-reports/*.md
             panel-reports/*-metrics.json
             agent-reports/*.md
