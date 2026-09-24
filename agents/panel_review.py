@@ -30,6 +30,7 @@ def main():
     p.add_argument("--case", required=True)
     p.add_argument("--mission", required=True)
     p.add_argument("--reports-dir", required=True)
+    p.add_argument("--ledger")
     p.add_argument("--out", default="work-panel")
     args = p.parse_args()
 
@@ -39,6 +40,7 @@ def main():
 
     case_text = Path(args.case).read_text(encoding="utf-8")
     mission_text = Path(args.mission).read_text(encoding="utf-8")
+    ledger_text = Path(args.ledger).read_text(encoding="utf-8") if args.ledger else ""
     max_line = max(1, len(case_text.splitlines()))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,8 @@ def main():
     system_prompt, user_prompt = build_panel_review(
         args.panel, roles, mission_text, case_text, args.reports_dir
     )
+    if ledger_text:
+        user_prompt += "\n\nLEDGER FACTUEL VÉRIFIÉ + GRAPHE PROCÉDURAL\n" + ledger_text
     draft, draft_meta = chat(
         args.model,
         system_prompt,
@@ -63,6 +67,8 @@ def main():
     audit_system, audit_user = build_panel_audit(
         args.panel, mission_text, case_text, draft
     )
+    if ledger_text:
+        audit_user += "\n\nLEDGER FACTUEL VÉRIFIÉ + GRAPHE PROCÉDURAL\n" + ledger_text
     answer, audit_meta = chat(
         args.model,
         audit_system,
