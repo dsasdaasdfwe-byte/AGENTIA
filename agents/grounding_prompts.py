@@ -41,6 +41,14 @@ Retourne UNIQUEMENT un JSON valide:
   }]
 }
 
+CONTRAINTES DE TAILLE ET QUALITÉ:
+- facts: 12 à 30 entrées maximum, uniquement les faits matériellement utiles;
+- procedure_edges: 4 à 20 maximum;
+- issues: 2 à 12 maximum;
+- quote: extrait exact court, idéalement 8 à 30 mots;
+- pas de doublons ni de paraphrases répétées;
+- JSON compact: aucune explication en dehors de l'objet.
+
 Toute entrée doit être soutenue par le quote exact et les lignes indiquées.
 Distingue strictement argument de partie, décision d'autorité et motif du tribunal.
 Si le tribunal refuse d'examiner le fond, les questions de fond restent NOT_EXAMINED.
@@ -54,6 +62,8 @@ Tu audites un ledger factuel/procédural contre le dossier original.
 Corrige ou supprime toute entrée dont acteur, action, date, qualité procédurale,
 résultat, status ou quote n'est pas exactement soutenu par les lignes indiquées.
 N'ajoute aucune information externe.
+Conserve un ledger compact: maximum 30 facts, 20 procedure_edges et 12 issues;
+supprime les doublons et garde des quotes exacts courts.
 Retourne UNIQUEMENT le JSON complet corrigé, avec facts, procedure_edges et issues.
 """
     user = (
