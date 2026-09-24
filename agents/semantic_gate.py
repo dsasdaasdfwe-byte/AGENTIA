@@ -168,3 +168,133 @@ def parse_results(raw, expected_ids, verifier_name):
     if missing:
         raise RuntimeError(f"{verifier_name} omitted claims: {sorted(missing)[:20]}")
     return out
+
+
+def verify_round(model, case_text, ledger_text, report, round_no):
+    source_lines = case_text.splitlines()
+    ledger = load_ledger(ledger_text)
+    claims, extraction_meta = extract_atomic_claims(model, report)
+    deterministic = deterministic_violations(claims, source_lines, ledger)
+    bundle = build_bundle(claims, source_lines)
+    verifiable_ids = {
+        item["id"] for item in claims if item["kind"] in VERIFIABLE
+    }
+    if not verifiable_ids:
+        raise RuntimeError("no verifiable atomic claims found")
+
+    sys_a, usr_a = verifier_a(case_text, ledger_text, bundle)
+    raw_a, meta_a = chat(
+        model, sys_a, usr_a,
+        num_predict=3000, num_ctx=32768, temperature=0.0,
+        seed=32000 + round_no, timeout=1800, keep_alive="10m",
+    )
+    results_a = parse_results(raw_a, verifiable_ids, "verifier A")
+
+    sys_b, usr_b = verifier_b(case_text, ledger_text, bundle)
+    raw_b, meta_b = chat(
+        model, sys_b, usr_b,
+        num_predict=3000, num_ctx=32768, temperature=0.0,
+        seed=33000 + round_no, timeout=1800, keep_alive="10m",
+    )
+    results_b = parse_results(raw_b, verifiable_ids, "verifier B")
+
+    violations = list(deterministic)
+    both_supported = 0
+    contradictions = 0
+    unsupported = 0
+    for cid in sorted(verifiable_ids):
+        a = results_a[cid]["status"]
+        b = results_b[cid]["status"]
+        if a == "SUPPORTED" and b == "SUPPORTED":
+            both_supported += 1
+            continue
+        if "CONTRADICTED" in {a, b}:
+            contradictions += 1
+        else:
+            unsupported += 1
+        violations.append({
+            "id": cid,
+            "status": "DOUBLE_CHECK_FAILED",
+            "reason": (
+                f"A={a}: {results_a[cid]['reason']} | "
+                f"B={b}: {results_b[cid]['reason']}"
+            ),
+        })
+
+    total = len(verifiable_ids)
+    ratio = both_supported / total if total else 0.0
+    return {
+        "claims": claims,
+        "total_verifiable_claims": total,
+        "double_supported_claims": both_supported,
+        "double_support_ratio": round(ratio, 4),
+        "contradictions": contradictions,
+        "unsupported": unsupported,
+        "deterministic_violations": deterministic,
+        "violations": violations,
+        "extractor": extraction_meta,
+        "verifier_a": meta_a,
+        "verifier_b": meta_b,
+        "results_a": results_a,
+        "results_b": results_b,
+    }
+
+
+def run_atomic_semantic_gate(
+    model, mission_text, case_text, ledger_text, report, max_rounds=3
+):
+    answer = report
+    history = []
+
+    for round_no in range(1, max_rounds + 1):
+        result = verify_round(
+            model, case_text, ledger_text, answer, round_no
+        )
+        result["round"] = round_no
+        history.append(result)
+
+        if not result["violations"]:
+            return answer, {
+                "target_support_ratio": TARGET_SUPPORT_RATIO,
+                "passed": True,
+                "final_double_support_ratio": 1.0,
+                "rounds": history,
+            }
+
+        if round_no < max_rounds:
+            repair_system, repair_user = atomic_repair(
+                mission_text,
+                case_text,
+                ledger_text,
+                answer,
+                json.dumps(result["violations"], ensure_ascii=False, indent=2),
+            )
+            answer, repair_meta = chat(
+                model, repair_system, repair_user,
+                num_predict=4200, num_ctx=32768, temperature=0.01,
+                seed=34000 + round_no, timeout=1800, keep_alive="10m",
+            )
+            result["repair"] = repair_meta
+            if repair_meta.get("done_reason") == "length":
+                raise RuntimeError("atomic semantic repair was truncated")
+
+    final = history[-1]
+    if (
+        final["double_support_ratio"] < TARGET_SUPPORT_RATIO
+        or final["contradictions"] > 0
+        or final["deterministic_violations"]
+    ):
+        raise RuntimeError(
+            "atomic semantic gate failed: "
+            f"support={final['double_support_ratio']}, "
+            f"contradictions={final['contradictions']}, "
+            f"deterministic={len(final['deterministic_violations'])}"
+        )
+
+    return answer, {
+        "target_support_ratio": TARGET_SUPPORT_RATIO,
+        "passed": True,
+        "final_double_support_ratio": final["double_support_ratio"],
+        "residual_unsupported_claims": final["unsupported"],
+        "rounds": history,
+    }
