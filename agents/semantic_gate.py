@@ -77,3 +77,94 @@ def extract_atomic_claims(model, report):
             if cite not in report:
                 raise RuntimeError(f"atomic extractor invented citation {cite}")
     return claims, meta
+
+
+def load_ledger(ledger_text):
+    try:
+        return json.loads(ledger_text)
+    except json.JSONDecodeError:
+        return {"facts": [], "procedure_edges": [], "issues": []}
+
+
+def known_entities(ledger):
+    values = set()
+    for item in ledger.get("facts", []):
+        values.add(str(item.get("subject") or "").strip())
+    for item in ledger.get("procedure_edges", []):
+        values.add(str(item.get("actor") or "").strip())
+        values.add(str(item.get("target") or "").strip())
+    for item in ledger.get("issues", []):
+        values.add(str(item.get("authority") or "").strip())
+    return sorted((x for x in values if len(x) >= 4), key=len, reverse=True)
+
+
+def deterministic_violations(claims, source_lines, ledger):
+    violations = []
+    entities = known_entities(ledger)
+    for item in claims:
+        if item["kind"] not in VERIFIABLE:
+            continue
+        cid = item["id"]
+        claim = str(item.get("claim") or "")
+        evidence = citation_lines(item["citations"], source_lines)
+
+        dates = {m.group(0) for m in DATE_WORD_RE.finditer(claim)}
+        dates.update(m.group(0) for m in DATE_NUM_RE.finditer(claim))
+        full_years = {x[-4:] for x in dates}
+        years = {m.group(0) for m in YEAR_RE.finditer(claim)} - full_years
+        for token in sorted(dates | years):
+            if token.lower() not in evidence.lower():
+                violations.append({
+                    "id": cid,
+                    "status": "UNSUPPORTED_DATE",
+                    "reason": f"{token!r} absent des lignes citées",
+                })
+
+        claim_low = claim.lower()
+        evidence_low = evidence.lower()
+        for entity in entities:
+            ent = entity.lower()
+            if ent in claim_low and ent not in evidence_low:
+                violations.append({
+                    "id": cid,
+                    "status": "UNSUPPORTED_ENTITY",
+                    "reason": f"entité {entity!r} absente des lignes citées",
+                })
+                break
+    return violations
+
+
+def build_bundle(claims, source_lines):
+    blocks = []
+    for item in claims:
+        if item["kind"] not in VERIFIABLE:
+            continue
+        evidence = citation_lines(item["citations"], source_lines)
+        blocks.append(
+            f"CLAIM {item['id']} ({item['kind']})\n"
+            f"{item['claim']}\nEVIDENCE\n{evidence}\n"
+        )
+    return "\n".join(blocks)
+
+
+def parse_results(raw, expected_ids, verifier_name):
+    data = parse_json(raw)
+    results = data.get("results")
+    if not isinstance(results, list):
+        raise RuntimeError(f"{verifier_name} returned no results list")
+    out = {}
+    for item in results:
+        cid = item.get("id")
+        status = item.get("status")
+        if cid not in expected_ids:
+            continue
+        if status not in {"SUPPORTED", "UNSUPPORTED", "CONTRADICTED"}:
+            raise RuntimeError(f"{verifier_name} invalid status for claim {cid}")
+        out[cid] = {
+            "status": status,
+            "reason": str(item.get("reason") or "")[:500],
+        }
+    missing = expected_ids - set(out)
+    if missing:
+        raise RuntimeError(f"{verifier_name} omitted claims: {sorted(missing)[:20]}")
+    return out
