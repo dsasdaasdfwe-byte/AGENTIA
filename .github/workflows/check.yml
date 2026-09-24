@@ -42,6 +42,7 @@ jobs:
           grep -F 'TARGET_SUPPORT_RATIO = 0.95' agents/semantic_gate.py
           grep -F 'verifier_a' agents/semantic_gate.py
           grep -F 'verifier_b' agents/semantic_gate.py
+          grep -F 'claim_coverage_check' agents/semantic_gate.py
           grep -F 'run_atomic_semantic_gate' agents/review.py
           grep -F 'http://127.0.0.1:11434/api/chat' agents/ollama_client.py
           if grep -R -E 'OLLAMA_API_KEY|qwen3\.5:cloud|ollama\.com/api' agents .github/workflows/run-20-agents.yml .github/actions; then
