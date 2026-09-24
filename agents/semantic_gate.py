@@ -63,6 +63,7 @@ def extract_atomic_claims(model, report, seed=31001):
         model, system, user,
         num_predict=3200, num_ctx=32768, temperature=0.0,
         seed=seed, timeout=1800, keep_alive="10m",
+        json_mode=True,
     )
     data = parse_json(raw)
     claims = data.get("claims")
@@ -192,6 +193,7 @@ def check_claim_coverage(model, report, claims, round_no):
         model, system, user,
         num_predict=1800, num_ctx=32768, temperature=0.0,
         seed=31500 + round_no, timeout=1800, keep_alive="10m",
+        json_mode=True,
     )
     data = parse_json(raw)
     missing = data.get("missing")
@@ -230,6 +232,7 @@ def verify_round(model, case_text, ledger_text, report, round_no):
         model, sys_a, usr_a,
         num_predict=3000, num_ctx=32768, temperature=0.0,
         seed=32000 + round_no, timeout=1800, keep_alive="10m",
+        json_mode=True,
     )
     results_a = parse_results(raw_a, verifiable_ids, "verifier A")
 
@@ -238,6 +241,7 @@ def verify_round(model, case_text, ledger_text, report, round_no):
         model, sys_b, usr_b,
         num_predict=3000, num_ctx=32768, temperature=0.0,
         seed=33000 + round_no, timeout=1800, keep_alive="10m",
+        json_mode=True,
     )
     results_b = parse_results(raw_b, verifiable_ids, "verifier B")
 
