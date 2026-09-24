@@ -48,6 +48,15 @@ def citation_lines(citations, source_lines):
     return "\n".join(chunks)
 
 
+def cited_line_set(text):
+    lines = set()
+    for m in CITE_RE.finditer(text):
+        a = int(m.group(1))
+        b = int(m.group(2) or m.group(1))
+        lines.update(range(a, b + 1))
+    return lines
+
+
 def extract_atomic_claims(model, report):
     system, user = atomic_claim_extract(report)
     raw, meta = chat(
@@ -60,6 +69,7 @@ def extract_atomic_claims(model, report):
     if not isinstance(claims, list) or not claims:
         raise RuntimeError("atomic extractor returned no claims")
     valid_kinds = VERIFIABLE | EXEMPT
+    allowed_lines = cited_line_set(report)
     ids = set()
     for item in claims:
         cid = item.get("id")
@@ -74,8 +84,13 @@ def extract_atomic_claims(model, report):
         if item["kind"] in VERIFIABLE and not cites:
             raise RuntimeError(f"verifiable claim {cid} has no citation")
         for cite in cites:
-            if cite not in report:
-                raise RuntimeError(f"atomic extractor invented citation {cite}")
+            m = CITE_RE.fullmatch(str(cite).strip())
+            if not m:
+                raise RuntimeError(f"atomic extractor returned invalid citation {cite}")
+            a = int(m.group(1))
+            b = int(m.group(2) or m.group(1))
+            if not set(range(a, b + 1)).issubset(allowed_lines):
+                raise RuntimeError(f"atomic extractor invented citation lines {cite}")
     return claims, meta
 
 
@@ -92,7 +107,6 @@ def known_entities(ledger):
         values.add(str(item.get("subject") or "").strip())
     for item in ledger.get("procedure_edges", []):
         values.add(str(item.get("actor") or "").strip())
-        values.add(str(item.get("target") or "").strip())
     for item in ledger.get("issues", []):
         values.add(str(item.get("authority") or "").strip())
     return sorted((x for x in values if len(x) >= 4), key=len, reverse=True)
