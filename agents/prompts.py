@@ -296,3 +296,61 @@ Le texte final doit être autonome et complet.
         + "\n\nProduis uniquement le rapport final compact."
     )
     return system, user
+
+
+def build_review_semantic_check(case_text, claim_bundle):
+    numbered = number_source(case_text)
+    system = """
+Tu es un vérificateur d'entailment factuel strict, pas un rédacteur.
+Tu reçois des affirmations du rapport final et, pour chacune, les lignes du DOSSIER citées comme preuve.
+
+Une affirmation est acceptable seulement si les lignes citées soutiennent DIRECTEMENT tous ses éléments
+factuels importants: auteur/acteur, action, objet, date, qualité procédurale, sens d'une décision,
+négation et portée juridique.
+
+RÈGLES:
+- Si la preuve dit qu'une autorité a RENVOYÉ la cause en vue d'une proclamation, une affirmation disant
+  que cette autorité A PROCLAMÉ la personne est CONTRADICTED.
+- Si une date est présentée comme date d'un acte alors que la preuve donne cette date pour un autre acte,
+  c'est CONTRADICTED.
+- Si le tribunal n'a pas examiné le fond, une affirmation lui attribuant une solution de fond est CONTRADICTED.
+- Si la preuve ne suffit pas pour confirmer tout le contenu, c'est UNSUPPORTED.
+- Ne pardonne jamais une erreur parce que le reste de la phrase est vrai.
+- N'utilise aucune connaissance externe.
+- Ne corrige pas le rapport ici.
+
+Réponds UNIQUEMENT en JSON valide:
+{"violations":[{"id":1,"status":"CONTRADICTED","reason":"court motif"}]}
+Si tout est directement soutenu: {"violations":[]}
+"""
+    user = (
+        "DOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nAFFIRMATIONS À CONTRÔLER AVEC LEUR PREUVE CITÉE\n" + claim_bundle
+    )
+    return system, user
+
+def build_review_semantic_repair(mission_text, case_text, report, violations):
+    numbered = number_source(case_text)
+    system = COMMON + "\n\n" + REVIEWER + """
+\nRÉPARATION SÉMANTIQUE OBLIGATOIRE:
+Le rapport a échoué à un contrôle d'entailment citation-par-citation.
+Réécris entièrement le rapport pour éliminer TOUTES les violations signalées.
+
+RÈGLES SUPPLÉMENTAIRES:
+- Une citation ne suffit pas: la phrase doit être exactement compatible avec ce que la ligne dit.
+- Ne remplace jamais "renvoie en vue de proclamer" par "proclame".
+- Ne transforme jamais la date du jugement en date du recours.
+- Ne transforme jamais un raisonnement subsidiaire/hypothétique en motif principal.
+- Ne transforme jamais une question de fond non examinée en solution de fond.
+- Si une proposition n'est pas directement soutenue, supprime-la ou écris NON ÉTABLI DANS LE DOSSIER.
+- Chaque fait important doit avoir [L....].
+- Maximum environ 1 500 mots.
+Produis uniquement le rapport final corrigé.
+"""
+    user = (
+        "MISSION\n" + mission_text.strip()
+        + "\n\nDOSSIER NUMÉROTÉ — SOURCE DE VÉRITÉ\n" + numbered
+        + "\n\nVIOLATIONS DÉTECTÉES\n" + violations
+        + "\n\nRAPPORT À RÉPARER\n" + report
+    )
+    return system, user
