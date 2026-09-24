@@ -3,7 +3,7 @@ import json
 import re
 
 from ollama_client import chat
-from grounding_prompts import atomic_claim_extract, verifier_a, verifier_b, atomic_repair
+from grounding_prompts import atomic_claim_extract, verifier_a, verifier_b, atomic_repair, claim_coverage_check
 
 CITE_RE = re.compile(r"\[L(\d{4})(?:-L(\d{4}))?\]")
 MONTHS = (
@@ -57,12 +57,12 @@ def cited_line_set(text):
     return lines
 
 
-def extract_atomic_claims(model, report):
+def extract_atomic_claims(model, report, seed=31001):
     system, user = atomic_claim_extract(report)
     raw, meta = chat(
         model, system, user,
         num_predict=3200, num_ctx=32768, temperature=0.0,
-        seed=31001, timeout=1800, keep_alive="10m",
+        seed=seed, timeout=1800, keep_alive="10m",
     )
     data = parse_json(raw)
     claims = data.get("claims")
@@ -184,10 +184,39 @@ def parse_results(raw, expected_ids, verifier_name):
     return out
 
 
+def check_claim_coverage(model, report, claims, round_no):
+    system, user = claim_coverage_check(
+        report, json.dumps({"claims": claims}, ensure_ascii=False, indent=2)
+    )
+    raw, meta = chat(
+        model, system, user,
+        num_predict=1800, num_ctx=32768, temperature=0.0,
+        seed=31500 + round_no, timeout=1800, keep_alive="10m",
+    )
+    data = parse_json(raw)
+    missing = data.get("missing")
+    if not isinstance(missing, list):
+        raise RuntimeError("coverage checker returned no missing list")
+    cleaned = []
+    for item in missing:
+        if not isinstance(item, dict):
+            continue
+        text_value = str(item.get("text") or "").strip()
+        if not text_value:
+            continue
+        cleaned.append({
+            "status": "MISSING_ATOMIC_CLAIM",
+            "text": text_value[:800],
+            "reason": str(item.get("reason") or "")[:500],
+        })
+    return cleaned, meta
+
+
 def verify_round(model, case_text, ledger_text, report, round_no):
     source_lines = case_text.splitlines()
     ledger = load_ledger(ledger_text)
-    claims, extraction_meta = extract_atomic_claims(model, report)
+    claims, extraction_meta = extract_atomic_claims(model, report, seed=31000 + round_no)
+    missing_claims, coverage_meta = check_claim_coverage(model, report, claims, round_no)
     deterministic = deterministic_violations(claims, source_lines, ledger)
     bundle = build_bundle(claims, source_lines)
     verifiable_ids = {
@@ -212,7 +241,7 @@ def verify_round(model, case_text, ledger_text, report, round_no):
     )
     results_b = parse_results(raw_b, verifiable_ids, "verifier B")
 
-    violations = list(deterministic)
+    violations = list(deterministic) + list(missing_claims)
     both_supported = 0
     contradictions = 0
     unsupported = 0
@@ -245,8 +274,10 @@ def verify_round(model, case_text, ledger_text, report, round_no):
         "contradictions": contradictions,
         "unsupported": unsupported,
         "deterministic_violations": deterministic,
+        "coverage_missing": missing_claims,
         "violations": violations,
         "extractor": extraction_meta,
+        "coverage_checker": coverage_meta,
         "verifier_a": meta_a,
         "verifier_b": meta_b,
         "results_a": results_a,
@@ -297,12 +328,14 @@ def run_atomic_semantic_gate(
         final["double_support_ratio"] < TARGET_SUPPORT_RATIO
         or final["contradictions"] > 0
         or final["deterministic_violations"]
+        or final["coverage_missing"]
     ):
         raise RuntimeError(
             "atomic semantic gate failed: "
             f"support={final['double_support_ratio']}, "
             f"contradictions={final['contradictions']}, "
-            f"deterministic={len(final['deterministic_violations'])}"
+            f"deterministic={len(final['deterministic_violations'])}, "
+            f"coverage_missing={len(final['coverage_missing'])}"
         )
 
     return answer, {
