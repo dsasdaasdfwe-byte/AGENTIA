@@ -9,6 +9,99 @@ from ollama_client import chat
 from grounding_prompts import fact_ledger_extract, fact_ledger_audit
 
 
+LEDGER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["facts", "procedure_edges", "issues"],
+    "properties": {
+        "facts": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 30,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "id", "subject", "predicate", "object",
+                    "date_text", "source_lines", "quote"
+                ],
+                "properties": {
+                    "id": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "predicate": {"type": "string"},
+                    "object": {"type": "string"},
+                    "date_text": {"type": ["string", "null"]},
+                    "source_lines": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "integer", "minimum": 1}
+                    },
+                    "quote": {"type": "string"},
+                },
+            },
+        },
+        "procedure_edges": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 20,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "id", "actor", "action", "target",
+                    "date_text", "source_lines", "quote"
+                ],
+                "properties": {
+                    "id": {"type": "string"},
+                    "actor": {"type": "string"},
+                    "action": {"type": "string"},
+                    "target": {"type": "string"},
+                    "date_text": {"type": ["string", "null"]},
+                    "source_lines": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "integer", "minimum": 1}
+                    },
+                    "quote": {"type": "string"},
+                },
+            },
+        },
+        "issues": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "id", "issue", "authority", "status",
+                    "source_lines", "quote"
+                ],
+                "properties": {
+                    "id": {"type": "string"},
+                    "issue": {"type": "string"},
+                    "authority": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "DECIDED", "NOT_EXAMINED",
+                            "SUBSIDIARY_REASONING", "PARTY_ARGUMENT",
+                            "UNRESOLVED"
+                        ],
+                    },
+                    "source_lines": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "integer", "minimum": 1}
+                    },
+                    "quote": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+
 def parse_json(raw):
     start = raw.find("{")
     end = raw.rfind("}")
@@ -138,7 +231,7 @@ def main():
         seed=21001,
         timeout=1800,
         keep_alive="10m",
-        json_mode=True,
+        json_schema=LEDGER_SCHEMA,
     )
     if draft_meta.get("done_reason") == "length":
         raise RuntimeError("fact ledger draft was truncated")
@@ -155,7 +248,7 @@ def main():
         seed=21002,
         timeout=1800,
         keep_alive="10m",
-        json_mode=True,
+        json_schema=LEDGER_SCHEMA,
     )
     if audit_meta.get("done_reason") == "length":
         raise RuntimeError("fact ledger audit was truncated")
