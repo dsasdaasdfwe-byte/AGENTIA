@@ -27,6 +27,7 @@ jobs:
           python3 -m py_compile agents/grounding_prompts.py
           python3 -m py_compile agents/fact_ledger.py
           python3 -m py_compile agents/semantic_gate.py
+          python3 -m unittest tests/test_grounding.py
       - name: Validate local-only topology
         run: |
           grep -F 'max-parallel: 20' .github/workflows/run-20-agents.yml
