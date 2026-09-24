@@ -21,6 +21,82 @@ VERIFIABLE = {"SOURCE_FACT", "LEGAL_SOURCE", "INFERENCE"}
 EXEMPT = {"RESEARCH_NEEDED", "HYPOTHESIS"}
 TARGET_SUPPORT_RATIO = 0.95
 
+ATOMIC_CLAIMS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["claims"],
+    "properties": {
+        "claims": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "claim", "citations", "kind"],
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1},
+                    "claim": {"type": "string"},
+                    "citations": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "SOURCE_FACT", "LEGAL_SOURCE", "INFERENCE",
+                            "RESEARCH_NEEDED", "HYPOTHESIS"
+                        ]
+                    },
+                },
+            },
+        }
+    },
+}
+
+VERIFIER_RESULTS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["results"],
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "status", "reason"],
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1},
+                    "status": {
+                        "type": "string",
+                        "enum": ["SUPPORTED", "UNSUPPORTED", "CONTRADICTED"]
+                    },
+                    "reason": {"type": "string"},
+                },
+            },
+        }
+    },
+}
+
+COVERAGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["missing"],
+    "properties": {
+        "missing": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text", "reason"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+            },
+        }
+    },
+}
+
 
 def parse_json(raw):
     start = raw.find("{")
@@ -63,7 +139,7 @@ def extract_atomic_claims(model, report, seed=31001):
         model, system, user,
         num_predict=3200, num_ctx=32768, temperature=0.0,
         seed=seed, timeout=1800, keep_alive="10m",
-        json_mode=True,
+        json_schema=ATOMIC_CLAIMS_SCHEMA,
     )
     data = parse_json(raw)
     claims = data.get("claims")
@@ -193,7 +269,7 @@ def check_claim_coverage(model, report, claims, round_no):
         model, system, user,
         num_predict=1800, num_ctx=32768, temperature=0.0,
         seed=31500 + round_no, timeout=1800, keep_alive="10m",
-        json_mode=True,
+        json_schema=COVERAGE_SCHEMA,
     )
     data = parse_json(raw)
     missing = data.get("missing")
@@ -232,7 +308,7 @@ def verify_round(model, case_text, ledger_text, report, round_no):
         model, sys_a, usr_a,
         num_predict=3000, num_ctx=32768, temperature=0.0,
         seed=32000 + round_no, timeout=1800, keep_alive="10m",
-        json_mode=True,
+        json_schema=VERIFIER_RESULTS_SCHEMA,
     )
     results_a = parse_results(raw_a, verifiable_ids, "verifier A")
 
@@ -241,7 +317,7 @@ def verify_round(model, case_text, ledger_text, report, round_no):
         model, sys_b, usr_b,
         num_predict=3000, num_ctx=32768, temperature=0.0,
         seed=33000 + round_no, timeout=1800, keep_alive="10m",
-        json_mode=True,
+        json_schema=VERIFIER_RESULTS_SCHEMA,
     )
     results_b = parse_results(raw_b, verifiable_ids, "verifier B")
 
