@@ -1,0 +1,20 @@
+name: Cancel Legacy Agent Run
+
+on:
+  push:
+    paths:
+      - ".cancel-legacy-trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentia-v4-local-only
+  cancel-in-progress: true
+
+jobs:
+  cancel-legacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "Legacy AGENTIA concurrency group superseded"
