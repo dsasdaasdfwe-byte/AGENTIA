@@ -26,6 +26,7 @@ def chat(
     timeout,
     keep_alive="10m",
     json_mode=False,
+    json_schema=None,
 ):
     payload = {
         "model": model,
@@ -45,7 +46,9 @@ def chat(
         },
     }
 
-    if json_mode:
+    if json_schema is not None:
+        payload["format"] = json_schema
+    elif json_mode:
         payload["format"] = "json"
 
     last_error = None
