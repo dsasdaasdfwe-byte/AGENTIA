@@ -25,6 +25,7 @@ FACT_ITEM_SCHEMA = {
         "source_lines": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 3,
             "items": {"type": "integer", "minimum": 1}
         },
         "quote": {"type": "string"},
@@ -47,6 +48,7 @@ PROCEDURE_EDGE_ITEM_SCHEMA = {
         "source_lines": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 3,
             "items": {"type": "integer", "minimum": 1}
         },
         "quote": {"type": "string"},
@@ -75,6 +77,7 @@ ISSUE_ITEM_SCHEMA = {
         "source_lines": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 3,
             "items": {"type": "integer", "minimum": 1}
         },
         "quote": {"type": "string"},
@@ -85,31 +88,37 @@ SECTION_CONFIG = {
     "facts": {
         "prefix": "F",
         "min_items": 5,
-        "max_items": 20,
-        "compressed_max_items": 15,
+        "max_items": 15,
+        "compressed_max_items": 12,
         "item_schema": FACT_ITEM_SCHEMA,
-        "draft_num_predict": 2000,
-        "audit_num_predict": 1800,
+        "draft_num_predict": 1800,
+        "audit_num_predict": 1600,
+        "compressed_draft_num_predict": 1400,
+        "compressed_audit_num_predict": 1300,
         "seed": 21001,
     },
     "procedure_edges": {
         "prefix": "P",
         "min_items": 2,
-        "max_items": 15,
-        "compressed_max_items": 10,
+        "max_items": 12,
+        "compressed_max_items": 9,
         "item_schema": PROCEDURE_EDGE_ITEM_SCHEMA,
-        "draft_num_predict": 1500,
-        "audit_num_predict": 1400,
+        "draft_num_predict": 1300,
+        "audit_num_predict": 1200,
+        "compressed_draft_num_predict": 950,
+        "compressed_audit_num_predict": 900,
         "seed": 21101,
     },
     "issues": {
         "prefix": "I",
         "min_items": 1,
-        "max_items": 12,
-        "compressed_max_items": 8,
+        "max_items": 8,
+        "compressed_max_items": 6,
         "item_schema": ISSUE_ITEM_SCHEMA,
-        "draft_num_predict": 1200,
-        "audit_num_predict": 1100,
+        "draft_num_predict": 950,
+        "audit_num_predict": 900,
+        "compressed_draft_num_predict": 700,
+        "compressed_audit_num_predict": 700,
         "seed": 21201,
     },
 }
@@ -165,6 +174,31 @@ def evidence_text(source_lines, line_numbers):
             raise RuntimeError(f"invalid ledger source line: {n}")
         parts.append(source_lines[n - 1])
     return "\n".join(parts)
+
+
+def anchor_quotes(data, source_lines, section):
+    """Replace only non-verbatim model quotes with the exact cited source text."""
+    if not isinstance(data, dict) or set(data) != {section}:
+        raise RuntimeError(f"{section} block must contain only the '{section}' key")
+    entries = data.get(section)
+    if not isinstance(entries, list):
+        raise RuntimeError(f"ledger missing list: {section}")
+
+    rewrites = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if "quote" not in entry:
+            continue
+        lines = entry.get("source_lines")
+        if not isinstance(lines, list) or not lines:
+            continue
+        evidence = evidence_text(source_lines, lines).strip()
+        quote = str(entry.get("quote") or "").strip()
+        if evidence and (len(quote) < 8 or norm(quote) not in norm(evidence)):
+            entry["quote"] = evidence
+            rewrites += 1
+    return rewrites
 
 
 def validate_entry(entry, source_lines, section):
@@ -293,7 +327,9 @@ def _call_section_model(
         system, user = fact_ledger_extract_section(
             case_text, section, compressed=compressed
         )
-        num_predict = cfg["draft_num_predict"]
+        num_predict = cfg[
+            "compressed_draft_num_predict" if compressed else "draft_num_predict"
+        ]
         seed = cfg["seed"]
     elif stage == "audit":
         if draft is None:
@@ -304,7 +340,9 @@ def _call_section_model(
             json.dumps({section: draft}, ensure_ascii=False, separators=(",", ":")),
             compressed=compressed,
         )
-        num_predict = cfg["audit_num_predict"]
+        num_predict = cfg[
+            "compressed_audit_num_predict" if compressed else "audit_num_predict"
+        ]
         seed = cfg["seed"] + 1
     else:
         raise RuntimeError(f"unknown ledger stage: {stage}")
@@ -329,6 +367,8 @@ def _call_section_model(
 def generate_validated_block(model, case_text, source_lines, section, *, stage, draft=None):
     attempts = []
     for compressed in (False, True):
+        mode = "compressed" if compressed else "normal"
+        print(f"ledger: {section} {stage} {mode} start", flush=True)
         raw, meta = _call_section_model(
             model,
             case_text,
@@ -337,7 +377,13 @@ def generate_validated_block(model, case_text, source_lines, section, *, stage, 
             draft=draft,
             compressed=compressed,
         )
-        attempts.append({"compressed": compressed, **meta})
+        attempt = {"compressed": compressed, **meta}
+        attempts.append(attempt)
+        print(
+            f"ledger: {section} {stage} {mode} "
+            f"done_reason={meta.get('done_reason')} eval_count={meta.get('eval_count')}",
+            flush=True,
+        )
         if meta.get("done_reason") == "length":
             if compressed:
                 raise RuntimeError(
@@ -346,7 +392,14 @@ def generate_validated_block(model, case_text, source_lines, section, *, stage, 
             continue
 
         data = parse_json(raw)
+        rewrites = anchor_quotes(data, source_lines, section)
+        attempt["quote_rewrites"] = rewrites
         validate_section(data, source_lines, section, compressed=compressed)
+        print(
+            f"ledger: {section} {stage} {mode} validated "
+            f"entries={len(data[section])} quote_rewrites={rewrites}",
+            flush=True,
+        )
         return data[section], attempts
 
     raise RuntimeError(f"{section} {stage} did not produce a complete block")
