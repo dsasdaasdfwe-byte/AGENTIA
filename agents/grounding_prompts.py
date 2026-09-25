@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 SECTION_LIMITS = {
-    "facts": {"max": 20, "compressed_max": 15},
-    "procedure_edges": {"max": 15, "compressed_max": 10},
-    "issues": {"max": 12, "compressed_max": 8},
+    "facts": {"max": 15, "compressed_max": 12},
+    "procedure_edges": {"max": 12, "compressed_max": 9},
+    "issues": {"max": 8, "compressed_max": 6},
 }
 
 
@@ -49,7 +49,7 @@ Retourne UNIQUEMENT un JSON valide sous cette forme:
 CONTRAINTES:
 - maximum {max_items} faits matériellement importants;
 - couvre en priorité chronologie, identités, actes, résultats et dates déterminants;
-- quote exact, court, réellement contenu dans les lignes citées;
+- quote: sous-chaîne CONTIGUË copiée mot pour mot des lignes citées, sans ellipse ni ponctuation modifiée;
 - aucun doublon, aucune paraphrase répétée, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -74,7 +74,7 @@ CONTRAINTES:
 - maximum {max_items} transitions procédurales importantes;
 - distingue strictement décider, recourir, admettre, annuler, renvoyer, proclamer,
   rejeter et déclarer irrecevable;
-- quote exact, court, réellement contenu dans les lignes citées;
+- quote: sous-chaîne CONTIGUË copiée mot pour mot des lignes citées, sans ellipse ni ponctuation modifiée;
 - aucun doublon, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -100,7 +100,7 @@ CONTRAINTES:
 - ne transforme jamais un argument de partie en constat de l'autorité;
 - si le tribunal refuse d'examiner le fond, la question de fond reste NOT_EXAMINED;
 - un raisonnement expressément subsidiaire reste SUBSIDIARY_REASONING;
-- quote exact, court, réellement contenu dans les lignes citées;
+- quote: sous-chaîne CONTIGUË copiée mot pour mot des lignes citées, sans ellipse ni ponctuation modifiée;
 - aucun doublon, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
