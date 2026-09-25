@@ -38,6 +38,9 @@ jobs:
           grep -F 'num_ctx=32768' agents/panel_review.py
           grep -F 'num_predict=4000' agents/review.py
           grep -F 'Build Verified Fact Ledger' .github/workflows/run-20-agents.yml
+          grep -F 'fact_ledger_extract_section' agents/fact_ledger.py
+          grep -F 'generate_validated_block' agents/fact_ledger.py
+          grep -F 'run_downstream' .github/workflows/run-20-agents.yml
           grep -F -- '--ledger fact-ledger/fact-ledger.json' .github/workflows/run-20-agents.yml
           grep -F 'TARGET_SUPPORT_RATIO = 0.95' agents/semantic_gate.py
           grep -F 'verifier_a' agents/semantic_gate.py
