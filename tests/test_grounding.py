@@ -112,12 +112,24 @@ class FactLedgerSplitTests(unittest.TestCase):
             ]
         }
 
+    def model_facts_block(self):
+        return {
+            "facts": [
+                {k: v for k, v in entry.items() if k != "quote"}
+                for entry in self.facts_block["facts"]
+            ]
+        }
+
     def test_split_schema_uses_bounded_fact_limits(self):
         normal = section_schema("facts")
         compressed = section_schema("facts", compressed=True)
         self.assertEqual(normal["required"], ["facts"])
         self.assertEqual(normal["properties"]["facts"]["maxItems"], 15)
         self.assertEqual(compressed["properties"]["facts"]["maxItems"], 12)
+        self.assertNotIn(
+            "quote",
+            normal["properties"]["facts"]["items"]["properties"],
+        )
 
     def test_section_validation_rejects_non_source_quote(self):
         broken = json.loads(json.dumps(self.facts_block))
@@ -125,19 +137,21 @@ class FactLedgerSplitTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "quote is not contained"):
             validate_section(broken, self.source, "facts")
 
-    def test_quote_anchoring_uses_exact_cited_source(self):
-        repaired = json.loads(json.dumps(self.facts_block))
-        repaired["facts"][0]["quote"] = "Le Conseil alpha a rendu sa décision."
+    def test_quote_anchoring_adds_exact_cited_source(self):
+        repaired = self.model_facts_block()
         rewrites = anchor_quotes(repaired, self.source, "facts")
-        self.assertEqual(rewrites, 1)
+        self.assertEqual(rewrites, 5)
         self.assertEqual(repaired["facts"][0]["quote"], self.source[0])
         validate_section(repaired, self.source, "facts")
 
     @patch("fact_ledger._call_section_model")
     def test_length_truncation_retries_in_compression_mode(self, mocked_call):
         mocked_call.side_effect = [
-            ("{", {"done_reason": "length", "eval_count": 2000}),
-            (json.dumps(self.facts_block), {"done_reason": "stop", "eval_count": 700}),
+            ("{", {"done_reason": "length", "eval_count": 1200}),
+            (
+                json.dumps(self.model_facts_block()),
+                {"done_reason": "stop", "eval_count": 500},
+            ),
         ]
         entries, attempts = generate_validated_block(
             "qwen3.5:9b",
@@ -151,6 +165,31 @@ class FactLedgerSplitTests(unittest.TestCase):
         self.assertFalse(attempts[0]["compressed"])
         self.assertTrue(attempts[1]["compressed"])
         self.assertTrue(mocked_call.call_args_list[1].kwargs["compressed"])
+
+    @patch("fact_ledger._call_section_model")
+    def test_invalid_block_retries_in_compression_mode(self, mocked_call):
+        invalid = self.model_facts_block()
+        invalid["facts"][0]["date_text"] = "10 mars 2025"
+        mocked_call.side_effect = [
+            (
+                json.dumps(invalid),
+                {"done_reason": "stop", "eval_count": 500},
+            ),
+            (
+                json.dumps(self.model_facts_block()),
+                {"done_reason": "stop", "eval_count": 450},
+            ),
+        ]
+        entries, attempts = generate_validated_block(
+            "qwen3.5:9b",
+            "\n".join(self.source),
+            self.source,
+            "facts",
+            stage="draft",
+        )
+        self.assertEqual(len(entries), 5)
+        self.assertIn("validation_error", attempts[0])
+        self.assertTrue(attempts[1]["compressed"])
 
 
 if __name__ == "__main__":
