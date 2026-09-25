@@ -14,14 +14,13 @@ FACT_ITEM_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "subject", "predicate", "object",
-        "date_text", "source_lines"
+        "source_lines"
     ],
     "properties": {
         "id": {"type": "string"},
         "subject": {"type": "string"},
         "predicate": {"type": "string"},
         "object": {"type": "string"},
-        "date_text": {"type": ["string", "null"]},
         "source_lines": {
             "type": "array",
             "minItems": 1,
@@ -36,14 +35,13 @@ PROCEDURE_EDGE_ITEM_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "actor", "action", "target",
-        "date_text", "source_lines"
+        "source_lines"
     ],
     "properties": {
         "id": {"type": "string"},
         "actor": {"type": "string"},
         "action": {"type": "string"},
         "target": {"type": "string"},
-        "date_text": {"type": ["string", "null"]},
         "source_lines": {
             "type": "array",
             "minItems": 1,
@@ -164,6 +162,33 @@ def norm(text):
     return re.sub(r"\s+", " ", str(text or "")).strip().lower()
 
 
+DATE_PATTERNS = [
+    re.compile(
+        r"\\b(?:1er|[0-3]?\\d)\\s+"
+        r"(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|"
+        r"septembre|octobre|novembre|décembre|decembre)\\s+\\d{4}\\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\\b\\d{4}-\\d{2}-\\d{2}\\b"),
+    re.compile(r"\\b\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4}\\b"),
+]
+
+
+def exact_dates(text):
+    matches = []
+    for pattern in DATE_PATTERNS:
+        matches.extend((m.start(), m.group(0)) for m in pattern.finditer(text))
+    matches.sort(key=lambda item: item[0])
+    seen = set()
+    values = []
+    for _, value in matches:
+        key = norm(value)
+        if key not in seen:
+            seen.add(key)
+            values.append(value)
+    return values
+
+
 def evidence_text(source_lines, line_numbers):
     parts = []
     for n in line_numbers:
@@ -171,6 +196,33 @@ def evidence_text(source_lines, line_numbers):
             raise RuntimeError(f"invalid ledger source line: {n}")
         parts.append(source_lines[n - 1])
     return "\n".join(parts)
+
+
+def anchor_dates(data, source_lines, section):
+    """Derive dates only from cited source text; ambiguous evidence stays undated."""
+    if section not in {"facts", "procedure_edges"}:
+        return 0
+    if not isinstance(data, dict) or set(data) != {section}:
+        raise RuntimeError(f"{section} block must contain only the '{section}' key")
+    entries = data.get(section)
+    if not isinstance(entries, list):
+        raise RuntimeError(f"ledger missing list: {section}")
+
+    rewrites = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        lines = entry.get("source_lines")
+        if not isinstance(lines, list) or not lines:
+            continue
+        evidence = evidence_text(source_lines, lines)
+        candidates = exact_dates(evidence)
+        anchored = candidates[0] if len(candidates) == 1 else None
+        previous = entry.get("date_text")
+        entry["date_text"] = anchored
+        if previous != anchored:
+            rewrites += 1
+    return rewrites
 
 
 def anchor_quotes(data, source_lines, section):
@@ -332,7 +384,7 @@ def _call_section_model(
         if draft is None:
             raise RuntimeError(f"missing draft for {section} audit")
         model_draft = [
-            {k: v for k, v in entry.items() if k != "quote"}
+            {k: v for k, v in entry.items() if k not in {"quote", "date_text"}}
             for entry in draft
         ]
         system, user = fact_ledger_audit_section(
@@ -398,8 +450,10 @@ def generate_validated_block(model, case_text, source_lines, section, *, stage, 
 
         try:
             data = parse_json(raw)
-            rewrites = anchor_quotes(data, source_lines, section)
-            attempt["quote_rewrites"] = rewrites
+            date_rewrites = anchor_dates(data, source_lines, section)
+            quote_rewrites = anchor_quotes(data, source_lines, section)
+            attempt["date_rewrites"] = date_rewrites
+            attempt["quote_rewrites"] = quote_rewrites
             validate_section(data, source_lines, section, compressed=compressed)
         except (RuntimeError, json.JSONDecodeError) as exc:
             attempt["validation_error"] = str(exc)
@@ -415,7 +469,8 @@ def generate_validated_block(model, case_text, source_lines, section, *, stage, 
 
         print(
             f"ledger: {section} {stage} {mode} validated "
-            f"entries={len(data[section])} quote_rewrites={rewrites}",
+            f"entries={len(data[section])} date_rewrites={date_rewrites} "
+            f"quote_rewrites={quote_rewrites}",
             flush=True,
         )
         return data[section], attempts
