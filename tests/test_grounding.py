@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "agents"))
 
 from fact_ledger import (
+    anchor_quotes,
     generate_validated_block,
     section_schema,
     validate_section,
@@ -115,14 +116,22 @@ class FactLedgerSplitTests(unittest.TestCase):
         normal = section_schema("facts")
         compressed = section_schema("facts", compressed=True)
         self.assertEqual(normal["required"], ["facts"])
-        self.assertEqual(normal["properties"]["facts"]["maxItems"], 20)
-        self.assertEqual(compressed["properties"]["facts"]["maxItems"], 15)
+        self.assertEqual(normal["properties"]["facts"]["maxItems"], 15)
+        self.assertEqual(compressed["properties"]["facts"]["maxItems"], 12)
 
     def test_section_validation_rejects_non_source_quote(self):
         broken = json.loads(json.dumps(self.facts_block))
         broken["facts"][0]["quote"] = "Citation inventée qui n'existe pas dans la source."
         with self.assertRaisesRegex(RuntimeError, "quote is not contained"):
             validate_section(broken, self.source, "facts")
+
+    def test_quote_anchoring_uses_exact_cited_source(self):
+        repaired = json.loads(json.dumps(self.facts_block))
+        repaired["facts"][0]["quote"] = "Le Conseil alpha a rendu sa décision."
+        rewrites = anchor_quotes(repaired, self.source, "facts")
+        self.assertEqual(rewrites, 1)
+        self.assertEqual(repaired["facts"][0]["quote"], self.source[0])
+        validate_section(repaired, self.source, "facts")
 
     @patch("fact_ledger._call_section_model")
     def test_length_truncation_retries_in_compression_mode(self, mocked_call):
