@@ -41,7 +41,6 @@ Retourne UNIQUEMENT un JSON valide sous cette forme:
   "subject":"acteur exactement identifié",
   "predicate":"action factuelle courte",
   "object":"objet de l'action",
-  "date_text":"date telle qu'écrite ou null",
   "source_lines":[1]
 }}]}}
 
@@ -49,7 +48,8 @@ CONTRAINTES:
 - maximum {max_items} faits matériellement importants;
 - couvre en priorité chronologie, identités, actes, résultats et dates déterminants;
 - source_lines doit viser les lignes qui soutiennent directement toute l'entrée;
-- ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines;
+- si une date est matérielle, cite la ligne qui la contient et préfère des lignes où la date pertinente est non ambiguë;
+- ne produis PAS de champ quote ni date_text: Python les reconstruira littéralement depuis source_lines;
 - aucun doublon, aucune paraphrase répétée, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -65,7 +65,6 @@ Retourne UNIQUEMENT un JSON valide sous cette forme:
   "actor":"acteur exactement identifié",
   "action":"acte procédural précis",
   "target":"destinataire, objet ou autorité suivante",
-  "date_text":"date telle qu'écrite ou null",
   "source_lines":[1]
 }}]}}
 
@@ -74,7 +73,8 @@ CONTRAINTES:
 - distingue strictement décider, recourir, admettre, annuler, renvoyer, proclamer,
   rejeter et déclarer irrecevable;
 - source_lines doit viser les lignes qui soutiennent directement toute l'entrée;
-- ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines;
+- si une date est matérielle, cite la ligne qui la contient et préfère des lignes où la date pertinente est non ambiguë;
+- ne produis PAS de champ quote ni date_text: Python les reconstruira littéralement depuis source_lines;
 - aucun doublon, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -100,7 +100,8 @@ CONTRAINTES:
 - si le tribunal refuse d'examiner le fond, la question de fond reste NOT_EXAMINED;
 - un raisonnement expressément subsidiaire reste SUBSIDIARY_REASONING;
 - source_lines doit viser les lignes qui soutiennent directement toute l'entrée;
-- ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines;
+- si une date est matérielle, cite la ligne qui la contient et préfère des lignes où la date pertinente est non ambiguë;
+- ne produis PAS de champ quote ni date_text: Python les reconstruira littéralement depuis source_lines;
 - aucun doublon, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -146,7 +147,7 @@ Corrige ou supprime toute entrée dont acteur, action, date, qualité procédura
 résultat, statut ou source_lines n'est pas exactement soutenu.
 N'ajoute aucune information externe et n'élargis pas la portée des formulations.
 {section_rules[section]}
-Ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines.
+Ne produis PAS de champ quote ni date_text: Python les reconstruira littéralement depuis source_lines.
 Conserve au maximum {max_items} entrées et retourne UNIQUEMENT l'objet JSON complet
 pour cette section, sans explication.
 {compression}
