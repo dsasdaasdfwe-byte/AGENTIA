@@ -2,6 +2,12 @@ name: Run 20 AI Agents
 
 on:
   workflow_dispatch:
+    inputs:
+      run_downstream:
+        description: "Run agents, panels and final reviewer after ledger inspection"
+        required: true
+        default: false
+        type: boolean
   push:
     paths:
       - ".agentia-trigger"
@@ -85,6 +91,7 @@ jobs:
           if-no-files-found: error
 
   agents:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_downstream }}
     name: Agent — ${{ matrix.role }}
     needs: fact-ledger
     runs-on: ubuntu-latest
