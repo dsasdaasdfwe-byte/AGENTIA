@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "agents"))
 
 from fact_ledger import (
+    anchor_dates,
     anchor_quotes,
     generate_validated_block,
     section_schema,
@@ -115,7 +116,7 @@ class FactLedgerSplitTests(unittest.TestCase):
     def model_facts_block(self):
         return {
             "facts": [
-                {k: v for k, v in entry.items() if k != "quote"}
+                {k: v for k, v in entry.items() if k not in {"quote", "date_text"}}
                 for entry in self.facts_block["facts"]
             ]
         }
@@ -126,10 +127,9 @@ class FactLedgerSplitTests(unittest.TestCase):
         self.assertEqual(normal["required"], ["facts"])
         self.assertEqual(normal["properties"]["facts"]["maxItems"], 15)
         self.assertEqual(compressed["properties"]["facts"]["maxItems"], 12)
-        self.assertNotIn(
-            "quote",
-            normal["properties"]["facts"]["items"]["properties"],
-        )
+        item_properties = normal["properties"]["facts"]["items"]["properties"]
+        self.assertNotIn("quote", item_properties)
+        self.assertNotIn("date_text", item_properties)
 
     def test_section_validation_rejects_non_source_quote(self):
         broken = json.loads(json.dumps(self.facts_block))
@@ -139,8 +139,13 @@ class FactLedgerSplitTests(unittest.TestCase):
 
     def test_quote_anchoring_adds_exact_cited_source(self):
         repaired = self.model_facts_block()
-        rewrites = anchor_quotes(repaired, self.source, "facts")
-        self.assertEqual(rewrites, 5)
+        date_rewrites = anchor_dates(repaired, self.source, "facts")
+        quote_rewrites = anchor_quotes(repaired, self.source, "facts")
+        self.assertEqual(date_rewrites, 2)
+        self.assertEqual(quote_rewrites, 5)
+        self.assertEqual(repaired["facts"][0]["date_text"], "3 mars 2025")
+        self.assertEqual(repaired["facts"][1]["date_text"], "10 mars 2025")
+        self.assertIsNone(repaired["facts"][2]["date_text"])
         self.assertEqual(repaired["facts"][0]["quote"], self.source[0])
         validate_section(repaired, self.source, "facts")
 
@@ -169,7 +174,7 @@ class FactLedgerSplitTests(unittest.TestCase):
     @patch("fact_ledger._call_section_model")
     def test_invalid_block_retries_in_compression_mode(self, mocked_call):
         invalid = self.model_facts_block()
-        invalid["facts"][0]["date_text"] = "10 mars 2025"
+        invalid["facts"][0]["source_lines"] = [99]
         mocked_call.side_effect = [
             (
                 json.dumps(invalid),
