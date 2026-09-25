@@ -14,7 +14,7 @@ FACT_ITEM_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "subject", "predicate", "object",
-        "date_text", "source_lines", "quote"
+        "date_text", "source_lines"
     ],
     "properties": {
         "id": {"type": "string"},
@@ -28,7 +28,6 @@ FACT_ITEM_SCHEMA = {
             "maxItems": 3,
             "items": {"type": "integer", "minimum": 1}
         },
-        "quote": {"type": "string"},
     },
 }
 
@@ -37,7 +36,7 @@ PROCEDURE_EDGE_ITEM_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "actor", "action", "target",
-        "date_text", "source_lines", "quote"
+        "date_text", "source_lines"
     ],
     "properties": {
         "id": {"type": "string"},
@@ -51,7 +50,6 @@ PROCEDURE_EDGE_ITEM_SCHEMA = {
             "maxItems": 3,
             "items": {"type": "integer", "minimum": 1}
         },
-        "quote": {"type": "string"},
     },
 }
 
@@ -60,7 +58,7 @@ ISSUE_ITEM_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "issue", "authority", "status",
-        "source_lines", "quote"
+        "source_lines"
     ],
     "properties": {
         "id": {"type": "string"},
@@ -80,7 +78,6 @@ ISSUE_ITEM_SCHEMA = {
             "maxItems": 3,
             "items": {"type": "integer", "minimum": 1}
         },
-        "quote": {"type": "string"},
     },
 }
 
@@ -91,10 +88,10 @@ SECTION_CONFIG = {
         "max_items": 15,
         "compressed_max_items": 12,
         "item_schema": FACT_ITEM_SCHEMA,
-        "draft_num_predict": 1800,
-        "audit_num_predict": 1600,
-        "compressed_draft_num_predict": 1400,
-        "compressed_audit_num_predict": 1300,
+        "draft_num_predict": 1200,
+        "audit_num_predict": 1000,
+        "compressed_draft_num_predict": 900,
+        "compressed_audit_num_predict": 850,
         "seed": 21001,
     },
     "procedure_edges": {
@@ -103,10 +100,10 @@ SECTION_CONFIG = {
         "max_items": 12,
         "compressed_max_items": 9,
         "item_schema": PROCEDURE_EDGE_ITEM_SCHEMA,
-        "draft_num_predict": 1300,
-        "audit_num_predict": 1200,
-        "compressed_draft_num_predict": 950,
-        "compressed_audit_num_predict": 900,
+        "draft_num_predict": 900,
+        "audit_num_predict": 800,
+        "compressed_draft_num_predict": 700,
+        "compressed_audit_num_predict": 650,
         "seed": 21101,
     },
     "issues": {
@@ -115,10 +112,10 @@ SECTION_CONFIG = {
         "max_items": 8,
         "compressed_max_items": 6,
         "item_schema": ISSUE_ITEM_SCHEMA,
-        "draft_num_predict": 950,
-        "audit_num_predict": 900,
-        "compressed_draft_num_predict": 700,
-        "compressed_audit_num_predict": 700,
+        "draft_num_predict": 650,
+        "audit_num_predict": 600,
+        "compressed_draft_num_predict": 500,
+        "compressed_audit_num_predict": 500,
         "seed": 21201,
     },
 }
@@ -177,7 +174,7 @@ def evidence_text(source_lines, line_numbers):
 
 
 def anchor_quotes(data, source_lines, section):
-    """Replace only non-verbatim model quotes with the exact cited source text."""
+    """Attach exact cited source text; the model never authors ledger quotes."""
     if not isinstance(data, dict) or set(data) != {section}:
         raise RuntimeError(f"{section} block must contain only the '{section}' key")
     entries = data.get(section)
@@ -188,15 +185,15 @@ def anchor_quotes(data, source_lines, section):
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        if "quote" not in entry:
-            continue
         lines = entry.get("source_lines")
         if not isinstance(lines, list) or not lines:
             continue
         evidence = evidence_text(source_lines, lines).strip()
-        quote = str(entry.get("quote") or "").strip()
-        if evidence and (len(quote) < 8 or norm(quote) not in norm(evidence)):
-            entry["quote"] = evidence
+        if not evidence:
+            continue
+        previous = str(entry.get("quote") or "").strip()
+        entry["quote"] = evidence
+        if previous != evidence:
             rewrites += 1
     return rewrites
 
@@ -334,10 +331,18 @@ def _call_section_model(
     elif stage == "audit":
         if draft is None:
             raise RuntimeError(f"missing draft for {section} audit")
+        model_draft = [
+            {k: v for k, v in entry.items() if k != "quote"}
+            for entry in draft
+        ]
         system, user = fact_ledger_audit_section(
             case_text,
             section,
-            json.dumps({section: draft}, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(
+                {section: model_draft},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
             compressed=compressed,
         )
         num_predict = cfg[
@@ -391,10 +396,23 @@ def generate_validated_block(model, case_text, source_lines, section, *, stage, 
                 )
             continue
 
-        data = parse_json(raw)
-        rewrites = anchor_quotes(data, source_lines, section)
-        attempt["quote_rewrites"] = rewrites
-        validate_section(data, source_lines, section, compressed=compressed)
+        try:
+            data = parse_json(raw)
+            rewrites = anchor_quotes(data, source_lines, section)
+            attempt["quote_rewrites"] = rewrites
+            validate_section(data, source_lines, section, compressed=compressed)
+        except (RuntimeError, json.JSONDecodeError) as exc:
+            attempt["validation_error"] = str(exc)
+            print(
+                f"ledger: {section} {stage} {mode} invalid: {exc}",
+                flush=True,
+            )
+            if compressed:
+                raise RuntimeError(
+                    f"{section} {stage} invalid after compression retry: {exc}"
+                ) from exc
+            continue
+
         print(
             f"ledger: {section} {stage} {mode} validated "
             f"entries={len(data[section])} quote_rewrites={rewrites}",
