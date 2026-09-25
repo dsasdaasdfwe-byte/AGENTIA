@@ -91,7 +91,7 @@ jobs:
           if-no-files-found: error
 
   agents:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_downstream }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_downstream }}
     name: Agent — ${{ matrix.role }}
     needs: fact-ledger
     runs-on: ubuntu-latest
