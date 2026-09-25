@@ -25,9 +25,9 @@ def fact_ledger_extract_section(case_text, section, compressed=False):
     max_items = _section_limit(section, compressed)
     compression = """
 MODE COMPRESSION STRICTE:
-- garde uniquement les éléments indispensables pour éviter une nouvelle troncature;
+- garde uniquement les éléments indispensables;
 - formulations très courtes, aucune répétition;
-- quotes exacts courts, idéalement 8 à 18 mots.
+- n'ajoute aucun détail secondaire.
 """ if compressed else ""
 
     if section == "facts":
@@ -42,14 +42,14 @@ Retourne UNIQUEMENT un JSON valide sous cette forme:
   "predicate":"action factuelle courte",
   "object":"objet de l'action",
   "date_text":"date telle qu'écrite ou null",
-  "source_lines":[1],
-  "quote":"court extrait EXACT du dossier"
+  "source_lines":[1]
 }}]}}
 
 CONTRAINTES:
 - maximum {max_items} faits matériellement importants;
 - couvre en priorité chronologie, identités, actes, résultats et dates déterminants;
-- quote: sous-chaîne CONTIGUË copiée mot pour mot des lignes citées, sans ellipse ni ponctuation modifiée;
+- source_lines doit viser les lignes qui soutiennent directement toute l'entrée;
+- ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines;
 - aucun doublon, aucune paraphrase répétée, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -66,15 +66,15 @@ Retourne UNIQUEMENT un JSON valide sous cette forme:
   "action":"acte procédural précis",
   "target":"destinataire, objet ou autorité suivante",
   "date_text":"date telle qu'écrite ou null",
-  "source_lines":[1],
-  "quote":"court extrait EXACT du dossier"
+  "source_lines":[1]
 }}]}}
 
 CONTRAINTES:
 - maximum {max_items} transitions procédurales importantes;
 - distingue strictement décider, recourir, admettre, annuler, renvoyer, proclamer,
   rejeter et déclarer irrecevable;
-- quote: sous-chaîne CONTIGUË copiée mot pour mot des lignes citées, sans ellipse ni ponctuation modifiée;
+- source_lines doit viser les lignes qui soutiennent directement toute l'entrée;
+- ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines;
 - aucun doublon, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -91,8 +91,7 @@ Retourne UNIQUEMENT un JSON valide sous cette forme:
   "issue":"question juridique précise",
   "authority":"autorité concernée",
   "status":"DECIDED|NOT_EXAMINED|SUBSIDIARY_REASONING|PARTY_ARGUMENT|UNRESOLVED",
-  "source_lines":[1],
-  "quote":"court extrait EXACT du dossier"
+  "source_lines":[1]
 }}]}}
 
 CONTRAINTES:
@@ -100,7 +99,8 @@ CONTRAINTES:
 - ne transforme jamais un argument de partie en constat de l'autorité;
 - si le tribunal refuse d'examiner le fond, la question de fond reste NOT_EXAMINED;
 - un raisonnement expressément subsidiaire reste SUBSIDIARY_REASONING;
-- quote: sous-chaîne CONTIGUË copiée mot pour mot des lignes citées, sans ellipse ni ponctuation modifiée;
+- source_lines doit viser les lignes qui soutiennent directement toute l'entrée;
+- ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines;
 - aucun doublon, aucune information externe;
 - JSON compact, aucune explication hors de l'objet.
 {compression}
@@ -119,7 +119,7 @@ def fact_ledger_audit_section(case_text, section, draft_json, compressed=False):
 MODE COMPRESSION STRICTE:
 - réduis encore la section aux éléments indispensables;
 - supprime doublons et détails secondaires;
-- garde des formulations et quotes très courts.
+- garde des formulations très courtes.
 """ if compressed else ""
 
     section_rules = {
@@ -143,9 +143,10 @@ MODE COMPRESSION STRICTE:
     system = f"""
 Tu audites UNIQUEMENT la section {section} d'un ledger juridique contre le dossier original.
 Corrige ou supprime toute entrée dont acteur, action, date, qualité procédurale,
-résultat, statut, lignes source ou quote n'est pas exactement soutenu.
+résultat, statut ou source_lines n'est pas exactement soutenu.
 N'ajoute aucune information externe et n'élargis pas la portée des formulations.
 {section_rules[section]}
+Ne produis PAS de champ quote: Python reconstruira l'extrait exact depuis source_lines.
 Conserve au maximum {max_items} entrées et retourne UNIQUEMENT l'objet JSON complet
 pour cette section, sans explication.
 {compression}
