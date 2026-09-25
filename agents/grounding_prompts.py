@@ -1,76 +1,161 @@
 #!/usr/bin/env python3
 
+SECTION_LIMITS = {
+    "facts": {"max": 20, "compressed_max": 15},
+    "procedure_edges": {"max": 15, "compressed_max": 10},
+    "issues": {"max": 12, "compressed_max": 8},
+}
+
+
 def numbered_source(text):
     return "\n".join(
         f"[L{i:04d}] {line}" for i, line in enumerate(text.splitlines(), start=1)
     )
 
-def fact_ledger_extract(case_text):
+
+def _section_limit(section, compressed):
+    if section not in SECTION_LIMITS:
+        raise ValueError(f"unknown ledger section: {section}")
+    key = "compressed_max" if compressed else "max"
+    return SECTION_LIMITS[section][key]
+
+
+def fact_ledger_extract_section(case_text, section, compressed=False):
     numbered = numbered_source(case_text)
-    system = """
-Tu extrais un ledger factuel et procédural d'un dossier juridique suisse.
+    max_items = _section_limit(section, compressed)
+    compression = """
+MODE COMPRESSION STRICTE:
+- garde uniquement les éléments indispensables pour éviter une nouvelle troncature;
+- formulations très courtes, aucune répétition;
+- quotes exacts courts, idéalement 8 à 18 mots.
+""" if compressed else ""
+
+    if section == "facts":
+        system = f"""
+Tu extrais UNIQUEMENT les faits matériels d'un dossier juridique suisse.
 Tu n'analyses pas le droit et tu n'infères rien au-delà du texte.
 
-Retourne UNIQUEMENT un JSON valide:
-{
-  "facts": [{
-    "id": "F001",
-    "subject": "acteur exactement identifié",
-    "predicate": "action factuelle courte",
-    "object": "objet de l'action",
-    "date_text": "date telle qu'écrite ou null",
-    "source_lines": [1],
-    "quote": "court extrait EXACT du dossier"
-  }],
-  "procedure_edges": [{
-    "id": "P001",
-    "actor": "acteur",
-    "action": "acte procédural",
-    "target": "destinataire, objet ou autorité suivante",
-    "date_text": "date telle qu'écrite ou null",
-    "source_lines": [1],
-    "quote": "court extrait EXACT du dossier"
-  }],
-  "issues": [{
-    "id": "I001",
-    "issue": "question juridique",
-    "authority": "autorité concernée",
-    "status": "DECIDED|NOT_EXAMINED|SUBSIDIARY_REASONING|PARTY_ARGUMENT|UNRESOLVED",
-    "source_lines": [1],
-    "quote": "court extrait EXACT du dossier"
-  }]
-}
+Retourne UNIQUEMENT un JSON valide sous cette forme:
+{{"facts":[{{
+  "id":"F001",
+  "subject":"acteur exactement identifié",
+  "predicate":"action factuelle courte",
+  "object":"objet de l'action",
+  "date_text":"date telle qu'écrite ou null",
+  "source_lines":[1],
+  "quote":"court extrait EXACT du dossier"
+}}]}}
 
-CONTRAINTES DE TAILLE ET QUALITÉ:
-- facts: 12 à 30 entrées maximum, uniquement les faits matériellement utiles;
-- procedure_edges: 4 à 20 maximum;
-- issues: 2 à 12 maximum;
-- quote: extrait exact court, idéalement 8 à 30 mots;
-- pas de doublons ni de paraphrases répétées;
-- JSON compact: aucune explication en dehors de l'objet.
-
-Toute entrée doit être soutenue par le quote exact et les lignes indiquées.
-Distingue strictement argument de partie, décision d'autorité et motif du tribunal.
-Si le tribunal refuse d'examiner le fond, les questions de fond restent NOT_EXAMINED.
+CONTRAINTES:
+- maximum {max_items} faits matériellement importants;
+- couvre en priorité chronologie, identités, actes, résultats et dates déterminants;
+- quote exact, court, réellement contenu dans les lignes citées;
+- aucun doublon, aucune paraphrase répétée, aucune information externe;
+- JSON compact, aucune explication hors de l'objet.
+{compression}
 """
-    return system, "DOSSIER NUMÉROTÉ\n" + numbered + "\n\nExtrais le ledger JSON."
+    elif section == "procedure_edges":
+        system = f"""
+Tu extrais UNIQUEMENT le graphe procédural d'un dossier juridique suisse.
+Tu n'analyses pas le droit et tu n'infères rien au-delà du texte.
 
-def fact_ledger_audit(case_text, draft_json):
+Retourne UNIQUEMENT un JSON valide sous cette forme:
+{{"procedure_edges":[{{
+  "id":"P001",
+  "actor":"acteur exactement identifié",
+  "action":"acte procédural précis",
+  "target":"destinataire, objet ou autorité suivante",
+  "date_text":"date telle qu'écrite ou null",
+  "source_lines":[1],
+  "quote":"court extrait EXACT du dossier"
+}}]}}
+
+CONTRAINTES:
+- maximum {max_items} transitions procédurales importantes;
+- distingue strictement décider, recourir, admettre, annuler, renvoyer, proclamer,
+  rejeter et déclarer irrecevable;
+- quote exact, court, réellement contenu dans les lignes citées;
+- aucun doublon, aucune information externe;
+- JSON compact, aucune explication hors de l'objet.
+{compression}
+"""
+    else:
+        system = f"""
+Tu extrais UNIQUEMENT les états des questions juridiques d'un dossier suisse.
+Tu dois distinguer ce qui a été décidé, non examiné, traité subsidiairement,
+seulement soutenu par une partie, ou laissé non résolu.
+
+Retourne UNIQUEMENT un JSON valide sous cette forme:
+{{"issues":[{{
+  "id":"I001",
+  "issue":"question juridique précise",
+  "authority":"autorité concernée",
+  "status":"DECIDED|NOT_EXAMINED|SUBSIDIARY_REASONING|PARTY_ARGUMENT|UNRESOLVED",
+  "source_lines":[1],
+  "quote":"court extrait EXACT du dossier"
+}}]}}
+
+CONTRAINTES:
+- maximum {max_items} questions matériellement importantes;
+- ne transforme jamais un argument de partie en constat de l'autorité;
+- si le tribunal refuse d'examiner le fond, la question de fond reste NOT_EXAMINED;
+- un raisonnement expressément subsidiaire reste SUBSIDIARY_REASONING;
+- quote exact, court, réellement contenu dans les lignes citées;
+- aucun doublon, aucune information externe;
+- JSON compact, aucune explication hors de l'objet.
+{compression}
+"""
+
+    return system, (
+        "DOSSIER NUMÉROTÉ\n" + numbered
+        + f"\n\nExtrais uniquement la section {section}."
+    )
+
+
+def fact_ledger_audit_section(case_text, section, draft_json, compressed=False):
     numbered = numbered_source(case_text)
-    system = """
-Tu audites un ledger factuel/procédural contre le dossier original.
+    max_items = _section_limit(section, compressed)
+    compression = """
+MODE COMPRESSION STRICTE:
+- réduis encore la section aux éléments indispensables;
+- supprime doublons et détails secondaires;
+- garde des formulations et quotes très courts.
+""" if compressed else ""
+
+    section_rules = {
+        "facts": (
+            "Vérifie spécialement acteur, action, objet et date. "
+            "Ne conserve aucun fait qui dépasse le texte cité."
+        ),
+        "procedure_edges": (
+            "Vérifie spécialement acteur, acte procédural, cible, résultat et date. "
+            "Ne confonds jamais renvoi et proclamation, ni irrecevabilité et décision au fond."
+        ),
+        "issues": (
+            "Vérifie spécialement le statut DECIDED / NOT_EXAMINED / "
+            "SUBSIDIARY_REASONING / PARTY_ARGUMENT / UNRESOLVED. "
+            "Ne transforme jamais l'argument d'une partie en constat d'une autorité."
+        ),
+    }
+    if section not in section_rules:
+        raise ValueError(f"unknown ledger section: {section}")
+
+    system = f"""
+Tu audites UNIQUEMENT la section {section} d'un ledger juridique contre le dossier original.
 Corrige ou supprime toute entrée dont acteur, action, date, qualité procédurale,
-résultat, status ou quote n'est pas exactement soutenu par les lignes indiquées.
-N'ajoute aucune information externe.
-Conserve un ledger compact: maximum 30 facts, 20 procedure_edges et 12 issues;
-supprime les doublons et garde des quotes exacts courts.
-Retourne UNIQUEMENT le JSON complet corrigé, avec facts, procedure_edges et issues.
+résultat, statut, lignes source ou quote n'est pas exactement soutenu.
+N'ajoute aucune information externe et n'élargis pas la portée des formulations.
+{section_rules[section]}
+Conserve au maximum {max_items} entrées et retourne UNIQUEMENT l'objet JSON complet
+pour cette section, sans explication.
+{compression}
 """
     user = (
         "DOSSIER NUMÉROTÉ\n" + numbered
-        + "\n\nLEDGER À AUDITER\n" + draft_json
+        + f"\n\nSECTION {section} À AUDITER\n" + draft_json
     )
     return system, user
+
 
 def atomic_claim_extract(report):
     system = """
@@ -89,6 +174,7 @@ Recopie les citations pertinentes avec chaque claim.
 Si une phrase contient plusieurs faits, crée plusieurs claims.
 """
     return system, "RAPPORT À DÉCOMPOSER\n" + report
+
 
 def verifier_a(case_text, ledger_text, bundle):
     numbered = numbered_source(case_text)
@@ -113,6 +199,7 @@ Retourne UNIQUEMENT:
     )
     return system, user
 
+
 def verifier_b(case_text, ledger_text, bundle):
     numbered = numbered_source(case_text)
     system = """
@@ -135,6 +222,7 @@ Retourne UNIQUEMENT:
         + "\n\nCLAIMS + EVIDENCE\n" + bundle
     )
     return system, user
+
 
 def atomic_repair(mission_text, case_text, ledger_text, report, violations):
     numbered = numbered_source(case_text)
