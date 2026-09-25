@@ -164,13 +164,13 @@ def norm(text):
 
 DATE_PATTERNS = [
     re.compile(
-        r"\\b(?:1er|[0-3]?\\d)\\s+"
+        r"\b(?:1er|[0-3]?\d)\s+"
         r"(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|"
-        r"septembre|octobre|novembre|décembre|decembre)\\s+\\d{4}\\b",
+        r"septembre|octobre|novembre|décembre|decembre)\s+\d{4}\b",
         re.IGNORECASE,
     ),
-    re.compile(r"\\b\\d{4}-\\d{2}-\\d{2}\\b"),
-    re.compile(r"\\b\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4}\\b"),
+    re.compile(r"\b\d{4}-\d{2}-\d{2}\b"),
+    re.compile(r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b"),
 ]
 
 
